@@ -3,7 +3,7 @@
         "enabled": true,
         "host": "eu-central-1-1.aws.cloud2.influxdata.com",
         "port": 443,
-        "token": "lfmpm-iXlgUmPvC194rwIJWKmkSpuu_Cks9c0x4sXmiwuiYWplDTTF3g5i-AdGxFuBPdfGjQeJHUfb4djvQ0Ow==",
+        "token": "lZuwLXAxcu9Lgo8c7_yyS91lOminVf0wIckJYUUgzUfpncNYED_RJ7L_GQyklRQHuuzfgWphVD7hlyqE5SKpPA==",
         "org": "Private",
         "bucket": "noise_buster",
         "realtime_bucket": "noise_buster_realtime",
