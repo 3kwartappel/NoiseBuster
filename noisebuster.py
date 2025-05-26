@@ -910,7 +910,7 @@ def main():
 
     notify_on_start()
 
-    # Start noise monitoring in separate thread
+    # Start noise monitoring in separate thread.
     noise_thread = threading.Thread(target=update_noise_level)
     noise_thread.daemon = True
     noise_thread.start()

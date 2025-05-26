@@ -1,14 +1,14 @@
 {
     "INFLUXDB_CONFIG": {
-        "enabled": false,
-        "host": "127.0.0.1",
-        "port": 8086,
-        "token": "<YOUR_INFLUXDB_TOKEN>",
-        "org": "<YOUR_INFLUXDB_ORG>",
+        "enabled": true,
+        "host": "eu-central-1-1.aws.cloud2.influxdata.com",
+        "port": 443,
+        "token": "lfmpm-iXlgUmPvC194rwIJWKmkSpuu_Cks9c0x4sXmiwuiYWplDTTF3g5i-AdGxFuBPdfGjQeJHUfb4djvQ0Ow==",
+        "org": "Private",
         "bucket": "noise_buster",
         "realtime_bucket": "noise_buster_realtime",
         "timeout": 20000,
-        "ssl": false
+        "ssl": true
     },
     "LOCAL_LOGGING": true,
     "PUSHOVER_CONFIG": {
@@ -32,7 +32,7 @@
     },
     "CAMERA_CONFIG": {
         "use_ip_camera": false,
-        "use_pi_camera": false,
+        "use_pi_camera": true,
         "ip_camera_url": "",
         "ip_camera_protocol": "rtsp",
         "rotation": 0,
