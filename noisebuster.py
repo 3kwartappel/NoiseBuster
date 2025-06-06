@@ -65,6 +65,10 @@ mqtt = None
 cv2 = None
 np = None
 
+#camera
+global_picam2 = None
+camera_lock = threading.Lock()
+
 # Load config from config.json
 def load_config(config_path):
     with open(config_path, 'r') as config_file:
@@ -197,7 +201,7 @@ def import_optional_modules():
             missing_optional_modules.append('paho-mqtt')
 
     # Camera
-    if CAMERA_CONFIG.get("use_ip_camera"):
+    if CAMERA_CONFIG.get("use_ip_camera") or CAMERA_CONFIG.get("use_pi_camera"):
         try:
             import cv2 as cv2_imported
             import numpy as np_imported
@@ -206,6 +210,13 @@ def import_optional_modules():
         except ImportError:
             logger.error("OpenCV or numpy not installed. Please install 'opencv-python' + 'numpy'.")
             missing_optional_modules.append('opencv-python, numpy')
+    # Pi Camera
+    if CAMERA_CONFIG.get("use_pi_camera"):
+        try:
+            from picamera2 import Picamera2
+        except ImportError:
+            logger.error("Pi camera library 'picamera2' not installed.")
+            missing_optional_modules.append('picamera2')    
 
     return missing_optional_modules
 
@@ -287,6 +298,12 @@ def check_configuration():
             logger.info("IP camera is enabled.")
     else:
         logger.info("IP camera is disabled.")
+
+    # Pi Camera
+    if CAMERA_CONFIG.get("use_pi_camera"):
+        logger.info("Pi camera is enabled.")
+    else:
+        logger.info("Pi camera is disabled.")
 
     # Telraam
     if TELRAAM_API_CONFIG.get("enabled"):
@@ -532,41 +549,147 @@ def send_to_mqtt(topic, payload):
 ####################################
 # CAMERA
 ####################################
+
+
 def capture_image(current_peak_dB, peak_temperature, peak_weather_description, peak_precipitation, timestamp):
+    frame = None
+    
     if CAMERA_CONFIG.get("use_ip_camera"):
         if cv2 is None:
             logger.error("OpenCV not installed. Can't capture images.")
             return
-        cap = cv2.VideoCapture(CAMERA_CONFIG["ip_camera_url"])
-        ret, frame = cap.read()
-        cap.release()
+        try:
+            cap = cv2.VideoCapture(CAMERA_CONFIG["ip_camera_url"])
+            ret, frame = cap.read()
+            cap.release()
+            if not ret or frame is None:
+                logger.error("Failed to capture from IP camera")
+                return
+        except Exception as e:
+            logger.error(f"Error capturing from IP camera: {str(e)}")
+            return
+    
+    elif CAMERA_CONFIG.get("use_pi_camera"):
+        try:
+            from picamera2 import Picamera2
+            import numpy as np
+            
+            # Create camera instance
+            picam2 = Picamera2()
+            
+            # Check if camera is already running and stop it
+            try:
+                picam2.stop()
+            except:
+                pass  # Camera wasn't running, that's fine
+            
+            # Configure camera with error handling
+            try:
+                camera_config = picam2.create_still_configuration()
+                
+                # Set resolution if specified, otherwise use default
+                if CAMERA_CONFIG.get("resolution"):
+                    resolution = tuple(CAMERA_CONFIG["resolution"])
+                    camera_config["main"]["size"] = resolution
+                    logger.debug(f"Using custom resolution: {resolution}")
+                else:
+                    camera_config["main"]["size"] = (1024, 768)  # Safe default resolution
+                    logger.debug("Using default resolution: (1024, 768)")
+                
+                # Apply configuration
+                picam2.configure(camera_config)
+                logger.debug("Camera configured successfully")
+                
+                # Start camera
+                picam2.start()
+                logger.debug("Camera started successfully")
+                
+                # Give camera more time to settle and auto-adjust
+                time.sleep(3)
+                
+                # Capture image as numpy array
+                frame = picam2.capture_array()
+                logger.debug(f"Captured frame shape: {frame.shape if frame is not None else 'None'}")
+                
+                # Verify frame was captured
+                if frame is None:
+                    logger.error("Failed to capture frame - frame is None")
+                    return
+                
+                # Convert from RGB to BGR for OpenCV (picamera2 outputs RGB by default)
+                if len(frame.shape) == 3 and frame.shape[2] == 3:
+                    frame = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
+                    logger.debug("Successfully converted RGB to BGR")
+                else:
+                    logger.warning(f"Unexpected frame format: {frame.shape}")
+                
+            except Exception as config_error:
+                logger.error(f"Error during camera configuration/capture: {str(config_error)}")
+                return
+            finally:
+                # Always stop the camera to free resources
+                try:
+                    picam2.stop()
+                    picam2.close()
+                    logger.debug("Camera stopped and closed")
+                except Exception as stop_error:
+                    logger.warning(f"Error stopping camera: {str(stop_error)}")
+                
+        except ImportError:
+            logger.error("picamera2 library not installed. Install with: pip install picamera2")
+            return
+        except Exception as e:
+            logger.error(f"Failed to capture from Pi camera: {str(e)}")
+            logger.debug("Full traceback:", exc_info=True)
+            return
     else:
-        logger.debug("IP camera usage not configured.")
+        logger.debug("No camera usage configured.")
         return
 
+    # Process and save the captured frame
     if frame is not None:
-        formatted_time = timestamp.strftime("%Y-%m-%d_%H:%M:%S")
-        weather_info = f"{peak_weather_description.replace(' ', '_')}_{peak_temperature}C"
-        filename = f"{formatted_time}_{weather_info}.jpg"
-        filepath = os.path.join(DEVICE_AND_NOISE_MONITORING_CONFIG['image_save_path'], filename)
+        try:
+            # Create timestamp and weather info for filename
+            formatted_time = timestamp.strftime("%Y-%m-%d_%H:%M:%S")
+            weather_info = f"{peak_weather_description.replace(' ', '_')}_{peak_temperature}C" if peak_weather_description else "no_weather"
+            filename = f"{formatted_time}_{weather_info}_{current_peak_dB}dB.jpg"
+            filepath = os.path.join(DEVICE_AND_NOISE_MONITORING_CONFIG['image_save_path'], filename)
 
-        if not os.path.exists(DEVICE_AND_NOISE_MONITORING_CONFIG['image_save_path']):
-            os.makedirs(DEVICE_AND_NOISE_MONITORING_CONFIG['image_save_path'])
-            logger.info(f"Created directory: {DEVICE_AND_NOISE_MONITORING_CONFIG['image_save_path']}")
+            # Create directory if it doesn't exist
+            if not os.path.exists(DEVICE_AND_NOISE_MONITORING_CONFIG['image_save_path']):
+                os.makedirs(DEVICE_AND_NOISE_MONITORING_CONFIG['image_save_path'])
+                logger.info(f"Created directory: {DEVICE_AND_NOISE_MONITORING_CONFIG['image_save_path']}")
 
-        text_lines = [
-            f"Time: {formatted_time}",
-            f"Noise: {current_peak_dB} dB",
-            f"Temp: {peak_temperature} C",
-            f"Weather: {peak_weather_description}",
-            f"Precipitation: {peak_precipitation} mm"
-        ]
-        y_position = 50
-        for line in text_lines:
-            cv2.putText(frame, line, (10, y_position), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0,0,255), 2)
-            y_position += 30
-        cv2.imwrite(filepath, frame)
-        logger.info(f"Image saved: {filepath}")
+            # Add text overlay to image
+            text_lines = [
+                f"Time: {formatted_time}",
+                f"Noise: {current_peak_dB} dB",
+                f"Temp: {peak_temperature}C" if peak_temperature else "Temp: N/A",
+                f"Weather: {peak_weather_description}" if peak_weather_description else "Weather: N/A",
+                f"Precipitation: {peak_precipitation}mm" if peak_precipitation else "Precipitation: N/A"
+            ]
+            
+            # Add text with better visibility (white text with black outline)
+            y_position = 50
+            for line in text_lines:
+                # Black outline
+                cv2.putText(frame, line, (10, y_position), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 0), 3)
+                # White text
+                cv2.putText(frame, line, (10, y_position), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
+                y_position += 35
+
+            # Save the image
+            success = cv2.imwrite(filepath, frame)
+            if success:
+                logger.info(f"Image saved successfully: {filepath}")
+            else:
+                logger.error(f"Failed to save image: {filepath}")
+                
+        except Exception as e:
+            logger.error(f"Error processing/saving image: {str(e)}")
+            logger.debug("Full traceback:", exc_info=True)
+    else:
+        logger.error("No frame captured from any camera source")
 
 def delete_old_images():
     image_path = DEVICE_AND_NOISE_MONITORING_CONFIG.get('image_save_path', './images')

@@ -3,7 +3,7 @@
         "enabled": true,
         "host": "eu-central-1-1.aws.cloud2.influxdata.com",
         "port": 443,
-        "token": "lZuwLXAxcu9Lgo8c7_yyS91lOminVf0wIckJYUUgzUfpncNYED_RJ7L_GQyklRQHuuzfgWphVD7hlyqE5SKpPA==",
+        "token": "lTONA98GVDfDdKhVX7RJCTYL-buSCezohr1zGZgDinO0ZrcEBOlv-hBwlU09CbsnVjfzc9fPhZmA0-u9HXlTVw==",
         "org": "Private",
         "bucket": "noise_buster",
         "realtime_bucket": "noise_buster_realtime",
@@ -45,7 +45,7 @@
     },
     "DEVICE_AND_NOISE_MONITORING_CONFIG": {
         "device_name": "noise_buster_device",
-        "minimum_noise_level": 80,
+        "minimum_noise_level": 70,
         "time_window_duration": 2,
         "image_save_path": "./images/",
         "image_retention_hours": 24,

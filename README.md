@@ -258,3 +258,39 @@ I'm actively developing a vehicle detection and counting module based on YOLOv11
 This project was initiated by Raphael Vael. I welcome anyone interested in improving NoiseBuster to join the effort. Whether it's refining the vehicle detection model, optimizing the noise detection algorithms, or expanding functionality, your input is greatly valued!
 
 This project, NoiseBuster, created by Raphael Vael, is licensed under the Creative Commons Attribution-NonCommercial 4.0 International License.
+
+
+## DAVID
+### how to ensure its valid permission
+
+run this to get the codes:
+lsusb 
+
+
+✅ 1. Open the udev rules file in vim
+bash
+Copy
+Edit
+sudo vim /etc/udev/rules.d/99-usb-soundmeter.rules
+✅ 2. Inside vim, add the rule
+Press i to enter insert mode, then paste:
+
+ini
+Copy
+Edit
+SUBSYSTEM=="usb", ATTR{idVendor}=="16c0", ATTR{idProduct}=="05dc", MODE="0666"
+✅ 3. Save and exit
+Press Esc, then type:
+
+ruby
+Copy
+Edit
+:wq
+and hit Enter.
+
+✅ 4. Reload udev rules and trigger
+bash
+Copy
+Edit
+sudo udevadm control --reload
+sudo udevadm trigger
