@@ -3,4 +3,5 @@ venv/
 config.json
 noisebuster.log
 images/
+hardware_stats.log
 
