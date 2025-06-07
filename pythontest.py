@@ -1,23 +1,13 @@
 import usb.core
 import usb.util
 
-# Find the USB device
-dev = usb.core.find(idVendor=0x1a86, idProduct=0x7523)
+# Find device
+dev = usb.core.find(idVendor=0x16c0, idProduct=0x05dc)
 
-# Make sure the device was found
 if dev is None:
-    raise ValueError("Device not found")
+    print("Device not found")
+else:
+    print("Device found:", dev)
 
-# Set the active configuration
-dev.set_configuration()
 
-# Interface 0, Bulk IN endpoint 0x82 (make sure this is correct for your device)
-endpoint = 0x82
-
-# Loop to continuously read data
-while True:
-
-    raw_data = dev.read(endpoint, 7)
-    db_value = (raw_data[1] * 256 + raw_data[2])/10 
-    # Print the dB value directly
-    print(db_value)
+watch -n 10 "echo -n \$(date '+%F %T')' | CPU: '; top -bn1 | grep 'Cpu(s)' | awk '{print 100 - \$8 \"%\"}'; free -m | awk '/Mem:/ {printf \" | Mem Used: %dMB | Mem Free: %dMB\", \$3, \$4}'; df -h / | awk 'END {printf \" | Disk Used: %s\", \$5}'; vcgencmd measure_temp | sed 's/temp=/ | Temp: /'"

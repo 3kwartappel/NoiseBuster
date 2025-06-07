@@ -549,8 +549,142 @@ def send_to_mqtt(topic, payload):
 ####################################
 # CAMERA
 ####################################
+def initialize_pi_camera():
+    """Initialize Pi camera once at startup"""
+    global global_picam2
+    
+    if not CAMERA_CONFIG.get("use_pi_camera"):
+        return False
+        
+    try:
+        from picamera2 import Picamera2
+        
+        # Create camera instance
+        global_picam2 = Picamera2()
+        
+        # Configure camera
+        camera_config = global_picam2.create_still_configuration()
+        
+        # Set resolution - use a smaller resolution for faster capture
+        if CAMERA_CONFIG.get("resolution"):
+            resolution = tuple(CAMERA_CONFIG["resolution"])
+        else:
+            resolution = (1024, 768)  # Smaller default for speed
+            
+        camera_config["main"]["size"] = resolution
+        camera_config["buffer_count"] = 2  # Reduce buffer count for speed
+        
+        # Apply configuration
+        global_picam2.configure(camera_config)
+        
+        # Start camera once
+        global_picam2.start()
+        
+        # Give camera time to settle (only needed once)
+        time.sleep(2)
+        
+        logger.info(f"Pi camera initialized successfully with resolution {resolution}")
+        return True
+        
+    except Exception as e:
+        logger.error(f"Failed to initialize Pi camera: {str(e)}")
+        global_picam2 = None
+        return False
 
+def capture_image_fast(current_peak_dB, peak_temperature, peak_weather_description, peak_precipitation, timestamp):
+    """Fast image capture using pre-initialized camera"""
+    global global_picam2
+    
+    frame = None
+    
+    if CAMERA_CONFIG.get("use_ip_camera"):
+        if cv2 is None:
+            logger.error("OpenCV not installed. Can't capture images.")
+            return
+        try:
+            cap = cv2.VideoCapture(CAMERA_CONFIG["ip_camera_url"])
+            ret, frame = cap.read()
+            cap.release()
+            if not ret or frame is None:
+                logger.error("Failed to capture from IP camera")
+                return
+        except Exception as e:
+            logger.error(f"Error capturing from IP camera: {str(e)}")
+            return
+    
+    elif CAMERA_CONFIG.get("use_pi_camera"):
+        if global_picam2 is None:
+            logger.error("Pi camera not initialized")
+            return
+            
+        try:
+            with camera_lock:  # Thread safety
+                # Fast capture - camera is already running
+                frame = global_picam2.capture_array()
+                
+                if frame is None:
+                    logger.error("Failed to capture frame - frame is None")
+                    return
+                
+                # Convert from RGB to BGR for OpenCV (picamera2 outputs RGB by default)
+                if len(frame.shape) == 3 and frame.shape[2] == 3:
+                    frame = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
+                else:
+                    logger.warning(f"Unexpected frame format: {frame.shape}")
+                
+        except Exception as e:
+            logger.error(f"Failed to capture from Pi camera: {str(e)}")
+            logger.debug("Full traceback:", exc_info=True)
+            return
+    else:
+        logger.debug("No camera usage configured.")
+        return
 
+       # Process and save the captured frame
+    if frame is not None:
+        try:
+            # Create timestamp and weather info for filename
+            formatted_time = timestamp.strftime("%Y-%m-%d_%H:%M:%S")
+            weather_info = f"{peak_weather_description.replace(' ', '_')}_{peak_temperature}C" if peak_weather_description else "no_weather"
+            filename = f"{formatted_time}_{weather_info}_{current_peak_dB}dB.jpg"
+            filepath = os.path.join(DEVICE_AND_NOISE_MONITORING_CONFIG['image_save_path'], filename)
+
+            # Create directory if it doesn't exist
+            if not os.path.exists(DEVICE_AND_NOISE_MONITORING_CONFIG['image_save_path']):
+                os.makedirs(DEVICE_AND_NOISE_MONITORING_CONFIG['image_save_path'])
+                logger.info(f"Created directory: {DEVICE_AND_NOISE_MONITORING_CONFIG['image_save_path']}")
+
+            # Add text overlay to image
+            text_lines = [
+                f"Time: {formatted_time}",
+                f"Noise: {current_peak_dB} dB",
+                f"Temp: {peak_temperature}C" if peak_temperature else "Temp: N/A",
+                f"Weather: {peak_weather_description}" if peak_weather_description else "Weather: N/A",
+                f"Precipitation: {peak_precipitation}mm" if peak_precipitation else "Precipitation: N/A"
+            ]
+            
+            # Add text with better visibility (white text with black outline)
+            y_position = 50
+            for line in text_lines:
+                # Black outline
+                cv2.putText(frame, line, (10, y_position), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 0), 3)
+                # White text
+                cv2.putText(frame, line, (10, y_position), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
+                y_position += 35
+
+            # Save the image
+            success = cv2.imwrite(filepath, frame)
+            if success:
+                logger.info(f"Image saved successfully: {filepath}")
+            else:
+                logger.error(f"Failed to save image: {filepath}")
+                
+        except Exception as e:
+            logger.error(f"Error processing/saving image: {str(e)}")
+            logger.debug("Full traceback:", exc_info=True)
+    else:
+        logger.error("No frame captured from any camera source")
+        
 def capture_image(current_peak_dB, peak_temperature, peak_weather_description, peak_precipitation, timestamp):
     frame = None
     
@@ -690,6 +824,17 @@ def capture_image(current_peak_dB, peak_temperature, peak_weather_description, p
             logger.debug("Full traceback:", exc_info=True)
     else:
         logger.error("No frame captured from any camera source")
+
+def cleanup_pi_camera():
+    """Clean up Pi camera resources on shutdown"""
+    global global_picam2
+    if global_picam2:
+        try:
+            global_picam2.stop()
+            global_picam2.close()
+            logger.info("Pi camera cleaned up successfully")
+        except Exception as e:
+            logger.warning(f"Error cleaning up Pi camera: {str(e)}")
 
 def delete_old_images():
     image_path = DEVICE_AND_NOISE_MONITORING_CONFIG.get('image_save_path', './images')
@@ -831,7 +976,7 @@ def update_noise_level():
                     send_to_mqtt(event_topic, event_payload)
 
                 # Camera
-                capture_image(current_peak_dB, peak_temp_float, peak_weather_desc, peak_precipitation_float, timestamp)
+                capture_image_fast(current_peak_dB, peak_temp_float, peak_weather_desc, peak_precipitation_float, timestamp)
 
             # reset
             window_start_time = current_time
@@ -1027,6 +1172,12 @@ def main():
             sys.exit(1)
         logger.info("Starting Noise Monitoring on USB device.")
 
+    # Initialize Pi camera once at startup
+    if CAMERA_CONFIG.get("use_pi_camera"):
+        if not initialize_pi_camera():
+            logger.error("Failed to initialize Pi camera. Disabling camera.")
+            CAMERA_CONFIG["use_pi_camera"] = False
+
     # Possibly send a Pushover on start
     if PUSHOVER_CONFIG.get("enabled"):
         send_pushover_notification("Noise Buster has started monitoring.")
@@ -1047,6 +1198,7 @@ def main():
             time.sleep(1)
     except KeyboardInterrupt:
         logger.info("Manual interruption by user.")
+        cleanup_pi_camera()  # Clean up on exit
 
 if __name__ == "__main__":
     main()

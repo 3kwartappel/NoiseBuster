@@ -45,7 +45,7 @@
     },
     "DEVICE_AND_NOISE_MONITORING_CONFIG": {
         "device_name": "noise_buster_device",
-        "minimum_noise_level": 70,
+        "minimum_noise_level": 60,
         "time_window_duration": 2,
         "image_save_path": "./images/",
         "image_retention_hours": 24,
