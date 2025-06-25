@@ -21,6 +21,7 @@ from queue import Queue
 import socket
 import urllib.parse
 import http.client
+from video_recording import CircularVideoBuffer, initialize_video_system, trigger_video_recording, cleanup_video_system
 
 # Required modules for USB-based sound meter and scheduling
 required_modules = [
@@ -68,6 +69,7 @@ np = None
 #camera
 global_picam2 = None
 camera_lock = threading.Lock()
+video_buffer = None
 
 # Load config from config.json
 def load_config(config_path):
@@ -95,6 +97,7 @@ DEVICE_AND_NOISE_MONITORING_CONFIG = config.get("DEVICE_AND_NOISE_MONITORING_CON
 TELRAAM_API_CONFIG = config.get("TELRAAM_API_CONFIG", {})
 TIMEZONE_CONFIG = config.get("TIMEZONE_CONFIG", {})
 DISCORD_CONFIG = config.get("DISCORD_CONFIG", {})
+VIDEO_CONFIG = config.get("VIDEO_CONFIG", {})
 
 # For serial usage
 SERIAL_CONFIG = config.get("SERIAL_CONFIG", {})
@@ -205,6 +208,7 @@ def import_optional_modules():
         try:
             import cv2 as cv2_imported
             import numpy as np_imported
+            from collections import deque
             cv2 = cv2_imported
             np = np_imported
         except ImportError:
@@ -304,6 +308,21 @@ def check_configuration():
         logger.info("Pi camera is enabled.")
     else:
         logger.info("Pi camera is disabled.")
+    
+    # Video configuration check
+    if VIDEO_CONFIG.get("enabled"):
+        if not VIDEO_CONFIG.get("fps"):
+            VIDEO_CONFIG["fps"] = 10
+        if not VIDEO_CONFIG.get("buffer_seconds"):
+            VIDEO_CONFIG["buffer_seconds"] = 10
+        if not VIDEO_CONFIG.get("resolution"):
+            VIDEO_CONFIG["resolution"] = [640, 480]
+        if not VIDEO_CONFIG.get("retention_hours"):
+            VIDEO_CONFIG["retention_hours"] = 24
+        
+        logger.info(f"Video recording enabled: {VIDEO_CONFIG['fps']}fps, {VIDEO_CONFIG['buffer_seconds']}s buffer")
+    else:
+        logger.info("Video recording is disabled.")
 
     # Telraam
     if TELRAAM_API_CONFIG.get("enabled"):
@@ -592,12 +611,23 @@ def initialize_pi_camera():
         return False
 
 def capture_image_fast(current_peak_dB, peak_temperature, peak_weather_description, peak_precipitation, timestamp):
-    """Fast image capture using pre-initialized camera"""
     global global_picam2
-    
+    global video_buffer
+
     frame = None
-    
-    if CAMERA_CONFIG.get("use_ip_camera"):
+
+    # Use video buffer if video recording is enabled and buffer is available
+    if VIDEO_CONFIG.get("enabled") and video_buffer:
+        try:
+            frame = video_buffer.get_latest_frame()
+            if frame is None:
+                logger.error("No frame available from video buffer for still image.")
+                return
+        except Exception as e:
+            logger.error(f"Error getting frame from video buffer: {str(e)}")
+            return
+
+    elif CAMERA_CONFIG.get("use_ip_camera"):
         if cv2 is None:
             logger.error("OpenCV not installed. Can't capture images.")
             return
@@ -613,10 +643,11 @@ def capture_image_fast(current_peak_dB, peak_temperature, peak_weather_descripti
             return
     
     elif CAMERA_CONFIG.get("use_pi_camera"):
-        if global_picam2 is None:
-            logger.error("Pi camera not initialized")
+        # Only use direct camera if video is not enabled
+        if VIDEO_CONFIG.get("enabled"):
+            logger.error("Direct Pi camera access disabled when video recording is enabled.")
             return
-            
+        
         try:
             with camera_lock:  # Thread safety
                 # Fast capture - camera is already running
@@ -640,7 +671,7 @@ def capture_image_fast(current_peak_dB, peak_temperature, peak_weather_descripti
         logger.debug("No camera usage configured.")
         return
 
-       # Process and save the captured frame
+    # Process and save the captured frame
     if frame is not None:
         try:
             # Create timestamp and weather info for filename
@@ -657,10 +688,10 @@ def capture_image_fast(current_peak_dB, peak_temperature, peak_weather_descripti
             # Add text overlay to image
             text_lines = [
                 f"Time: {formatted_time}",
-                f"Noise: {current_peak_dB} dB",
-                f"Temp: {peak_temperature}C" if peak_temperature else "Temp: N/A",
-                f"Weather: {peak_weather_description}" if peak_weather_description else "Weather: N/A",
-                f"Precipitation: {peak_precipitation}mm" if peak_precipitation else "Precipitation: N/A"
+                f"Noise: {current_peak_dB} dB"
+                # f"Temp: {peak_temperature}C" if peak_temperature else "Temp: N/A",
+                # f"Weather: {peak_weather_description}" if peak_weather_description else "Weather: N/A",
+                # f"Precipitation: {peak_precipitation}mm" if peak_precipitation else "Precipitation: N/A"
             ]
             
             # Add text with better visibility (white text with black outline)
@@ -686,9 +717,20 @@ def capture_image_fast(current_peak_dB, peak_temperature, peak_weather_descripti
         logger.error("No frame captured from any camera source")
         
 def capture_image(current_peak_dB, peak_temperature, peak_weather_description, peak_precipitation, timestamp):
+    global video_buffer
     frame = None
-    
-    if CAMERA_CONFIG.get("use_ip_camera"):
+
+    if VIDEO_CONFIG.get("enabled") and video_buffer:
+        try:
+            frame = video_buffer.get_latest_frame()
+            if frame is None:
+                logger.error("No frame available from video buffer for still image.")
+                return
+        except Exception as e:
+            logger.error(f"Error getting frame from video buffer: {str(e)}")
+            return
+
+    elif CAMERA_CONFIG.get("use_ip_camera"):
         if cv2 is None:
             logger.error("OpenCV not installed. Can't capture images.")
             return
@@ -704,6 +746,11 @@ def capture_image(current_peak_dB, peak_temperature, peak_weather_description, p
             return
     
     elif CAMERA_CONFIG.get("use_pi_camera"):
+        # Only use direct camera if video is not enabled
+        if VIDEO_CONFIG.get("enabled"):
+            logger.error("Direct Pi camera access disabled when video recording is enabled.")
+            return
+        
         try:
             from picamera2 import Picamera2
             import numpy as np
@@ -976,7 +1023,18 @@ def update_noise_level():
                     send_to_mqtt(event_topic, event_payload)
 
                 # Camera
-                capture_image_fast(current_peak_dB, peak_temp_float, peak_weather_desc, peak_precipitation_float, timestamp)
+                #capture_image_fast(current_peak_dB, peak_temp_float, peak_weather_desc, peak_precipitation_float, timestamp)
+
+                # NEW: video recording
+                if video_buffer and VIDEO_CONFIG.get("enabled"):
+                    logger.info("Triggering video recording for noise event")
+                    trigger_video_recording(
+                        video_buffer=video_buffer,
+                        noise_level=round(current_peak_dB, 1),
+                        temperature=peak_temp_float,
+                        weather_description=peak_weather_desc,
+                        precipitation=peak_precipitation_float
+                    )
 
             # reset
             window_start_time = current_time
@@ -1039,6 +1097,13 @@ def schedule_tasks():
         # Influx retries
         if INFLUXDB_CONFIG.get("enabled"):
             schedule.every(1).minutes.do(retry_failed_writes)
+
+        # Video cleanup scheduling
+        if VIDEO_CONFIG.get("enabled") and video_buffer:
+            retention_hours = VIDEO_CONFIG.get("retention_hours", 24)
+            schedule.every().hour.do(lambda: video_buffer.cleanup_old_videos(retention_hours))
+            logger.info(f"Video cleanup scheduled every hour (retention: {retention_hours}h)")
+
     except Exception as e:
         logger.error(f"Error scheduling tasks: {str(e)}")
 
@@ -1128,6 +1193,12 @@ def notify_on_start():
     mqtt_status = "Connected" if mqtt_connected else "Not connected"
     influxdb_status = "Connected" if InfluxDB_CLIENT else "Not connected"
     weather_status = "Enabled" if WEATHER_CONFIG.get("enabled") else "Disabled"
+    
+    video_status = "Enabled" if VIDEO_CONFIG.get("enabled") else "Disabled"
+    if VIDEO_CONFIG.get("enabled"):
+        video_details = f" ({VIDEO_CONFIG.get('fps', 10)}fps, {VIDEO_CONFIG.get('buffer_seconds', 10)}s buffer)"
+    else:
+        video_details = ""
 
     message = (
         f"**Noise Buster Client Started**\n"
@@ -1140,6 +1211,7 @@ def notify_on_start():
         f"Serial Status: **{status_serial}**\n"
         f"Minimum Noise Level: **{DEVICE_AND_NOISE_MONITORING_CONFIG['minimum_noise_level']} dB**\n"
         f"Camera Usage: **{'IP Camera' if CAMERA_CONFIG.get('use_ip_camera') else 'None'}**\n"
+        f"Video Recording: **{video_status}{video_details}**\n"
         f"Telraam Usage: **{'Enabled' if TELRAAM_API_CONFIG.get('enabled') else 'Disabled'}**\n"
         f"Weather Data: **{weather_status}**\n"
         f"Timezone: **UTC{TIMEZONE_CONFIG.get('timezone_offset', 0):+}**\n"
@@ -1151,6 +1223,8 @@ def notify_on_start():
 # MAIN
 ####################################
 def main():
+    global video_buffer
+
     # Quick config checks
     dev_check = None
     if use_serial_device:
@@ -1172,11 +1246,20 @@ def main():
             sys.exit(1)
         logger.info("Starting Noise Monitoring on USB device.")
 
-    # Initialize Pi camera once at startup
-    if CAMERA_CONFIG.get("use_pi_camera"):
+    # Initialize Pi camera only if video is NOT enabled
+    if CAMERA_CONFIG.get("use_pi_camera") and not VIDEO_CONFIG.get("enabled"):
         if not initialize_pi_camera():
             logger.error("Failed to initialize Pi camera. Disabling camera.")
             CAMERA_CONFIG["use_pi_camera"] = False
+
+    # Initialize video recording system
+    if VIDEO_CONFIG.get("enabled"):
+        logger.info("Initializing video recording system...")
+        video_buffer = initialize_video_system(config)
+        if video_buffer:
+            logger.info("Video recording system initialized successfully")
+        else:
+            logger.error("Failed to initialize video recording system")
 
     # Possibly send a Pushover on start
     if PUSHOVER_CONFIG.get("enabled"):
@@ -1198,7 +1281,10 @@ def main():
             time.sleep(1)
     except KeyboardInterrupt:
         logger.info("Manual interruption by user.")
-        cleanup_pi_camera()  # Clean up on exit
+        if not VIDEO_CONFIG.get("enabled"):
+            cleanup_pi_camera()  # Clean up on exit only if not using video
+        if video_buffer:
+            cleanup_video_system(video_buffer)
 
 if __name__ == "__main__":
     main()

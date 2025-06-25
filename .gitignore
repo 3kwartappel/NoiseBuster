@@ -4,4 +4,5 @@ config.json
 noisebuster.log
 images/
 hardware_stats.log
-
+videos/
+__pycache__
