@@ -1,8 +1,10 @@
 noisebuster.log
 venv/
+env/
 config.json
 noisebuster.log
 images/
 hardware_stats.log
 videos/
 __pycache__
+config_secret.txt
