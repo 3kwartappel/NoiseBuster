@@ -149,6 +149,10 @@ class CircularVideoBuffer:
     
     def _record_event(self, noise_level, temperature, weather_description, precipitation, post_event_seconds):
         """Record event video (pre-buffer + post-event duration)"""
+        video_writer = None
+        filepath = ""
+        pre_event_frames_len = 0
+        frames_recorded = 0
         try:
             event_timestamp = datetime.now()
             
@@ -168,9 +172,9 @@ class CircularVideoBuffer:
             # Get current buffer frames (pre-event)
             with self.buffer_lock:
                 pre_event_frames = list(self.frame_buffer)
-                pre_event_timestamps = list(self.timestamp_buffer)
+            pre_event_frames_len = len(pre_event_frames)
             
-            logger.info(f"Starting event recording: {len(pre_event_frames)} pre-event frames, {post_event_seconds}s post-event")
+            logger.info(f"Starting event recording: {pre_event_frames_len} pre-event frames, {post_event_seconds}s post-event")
             
             # Initialize video writer
             fourcc = cv2.VideoWriter_fourcc(*'mp4v')
@@ -178,55 +182,36 @@ class CircularVideoBuffer:
             
             if not video_writer.isOpened():
                 logger.error(f"Failed to open video writer for {filepath}")
-                self.is_recording_event = False
                 return
             
             # Write pre-event frames
             for frame in pre_event_frames:
                 if frame is not None:
-                    # Add timestamp overlay
                     display_frame = self._add_overlay_to_frame(
-                        frame.copy(), 
-                        event_timestamp, 
-                        noise_level, 
-                        temperature, 
-                        weather_description, 
-                        precipitation
+                        frame.copy(), event_timestamp, noise_level, temperature, weather_description, precipitation
                     )
                     video_writer.write(display_frame)
             
             # Record post-event frames
             post_event_frame_count = int(self.fps * post_event_seconds)
-            frames_recorded = 0
             
             start_time = time.time()
             while frames_recorded < post_event_frame_count and not self.should_stop.is_set():
                 try:
-                    # Capture new frame
                     with self.camera_lock:
                         if self.picam2:
                             frame = self.picam2.capture_array()
-                            
                             if frame is not None:
-                                # Convert RGB to BGR
                                 if len(frame.shape) == 3 and frame.shape[2] == 3:
                                     frame_bgr = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
                                 else:
                                     frame_bgr = frame
-                                
-                                # Add overlay and write to video
                                 display_frame = self._add_overlay_to_frame(
-                                    frame_bgr.copy(), 
-                                    event_timestamp, 
-                                    noise_level, 
-                                    temperature, 
-                                    weather_description, 
-                                    precipitation
+                                    frame_bgr.copy(), event_timestamp, noise_level, temperature, weather_description, precipitation
                                 )
                                 video_writer.write(display_frame)
                                 frames_recorded += 1
                     
-                    # Maintain FPS timing
                     elapsed = time.time() - start_time
                     expected_time = frames_recorded / self.fps
                     if elapsed < expected_time:
@@ -235,21 +220,18 @@ class CircularVideoBuffer:
                 except Exception as e:
                     logger.error(f"Error recording post-event frame: {str(e)}")
                     time.sleep(1.0 / self.fps)
-            
-            # Finalize video
-            video_writer.release()
-            
-            # Verify video file was created
-            if os.path.exists(filepath) and os.path.getsize(filepath) > 0:
-                logger.info(f"Event video saved successfully: {filepath}")
-                logger.info(f"Video stats: {len(pre_event_frames)} pre-event + {frames_recorded} post-event frames")
-            else:
-                logger.error(f"Video file was not created or is empty: {filepath}")
-            
+                    
         except Exception as e:
-            logger.error(f"Error recording event video: {str(e)}")
+            logger.error(f"Error during event recording: {str(e)}")
             logger.debug("Full traceback:", exc_info=True)
         finally:
+            if video_writer and video_writer.isOpened():
+                video_writer.release()
+                if os.path.exists(filepath) and os.path.getsize(filepath) > 0:
+                    logger.info(f"Event video saved successfully: {filepath}")
+                    logger.info(f"Video stats: {pre_event_frames_len} pre-event + {frames_recorded} post-event frames")
+                else:
+                    logger.error(f"Video file was not created or is empty: {filepath}")
             self.is_recording_event = False
     
     def _add_overlay_to_frame(self, frame, timestamp, noise_level, temperature, weather_description, precipitation):
@@ -357,15 +339,17 @@ def initialize_video_system(config):
     
     return video_buffer
 
-def trigger_video_recording(video_buffer, noise_level, temperature, weather_description, precipitation):
+def trigger_video_recording(video_buffer, noise_level, temperature, weather_description, precipitation, config):
     """Trigger video recording for noise event"""
     if video_buffer:
+        video_config = config.get("VIDEO_CONFIG", {})
+        post_event_seconds = video_config.get("post_event_seconds", 5)
         video_buffer.trigger_event_recording(
             noise_level=noise_level,
             temperature=temperature, 
             weather_description=weather_description,
             precipitation=precipitation,
-            post_event_seconds=5
+            post_event_seconds=post_event_seconds
         )
 
 def cleanup_video_system(video_buffer):

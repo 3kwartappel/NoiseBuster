@@ -3,7 +3,7 @@
         "enabled": true,
         "host": "eu-central-1-1.aws.cloud2.influxdata.com",
         "port": 443,
-        "token": "lTONA98GVDfDdKhVX7RJCTYL-buSCezohr1zGZgDinO0ZrcEBOlv-hBwlU09CbsnVjfzc9fPhZmA0-u9HXlTVw==",
+        "token": "XXX",
         "org": "Private",
         "bucket": "noise_buster",
         "realtime_bucket": "noise_buster_realtime",
@@ -38,10 +38,18 @@
         "rotation": 0,
         "hflip": false,
         "vflip": false,
-        "resolution": [640, 480]
+        "resolution": [1024, 768]
     },
     "IMAGE_STORAGE_CONFIG": {
         "store_in_db": false
+    },
+    "VIDEO_CONFIG": {
+        "enabled": true,
+        "fps": 10,
+        "buffer_seconds": 10,
+        "resolution": [640, 480],
+        "retention_hours": 24,
+        "post_event_seconds": 5
     },
     "DEVICE_AND_NOISE_MONITORING_CONFIG": {
         "device_name": "noise_buster_device",
