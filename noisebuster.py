@@ -22,6 +22,7 @@ import socket
 import urllib.parse
 import http.client
 from video_recording import CircularVideoBuffer, initialize_video_system, trigger_video_recording, cleanup_video_system
+from dotenv import load_dotenv
 
 # Required modules for USB-based sound meter and scheduling
 required_modules = [
@@ -79,6 +80,10 @@ def load_config(config_path):
 
 try:
     config = load_config('config.json')
+    load_dotenv()
+    influx_token = os.getenv("INFLUXDB_TOKEN")
+    if influx_token:
+        config['INFLUXDB_CONFIG']['token'] = influx_token
 except json.JSONDecodeError as e:
     print(f"Error parsing config.json: {e}")
     sys.exit(1)
