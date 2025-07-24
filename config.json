@@ -1,0 +1,86 @@
+{
+    "INFLUXDB_CONFIG": {
+        "enabled": true,
+        "host": "",
+        "port": 443,
+        "token": "",
+        "org": "Private",
+        "bucket": "noise_buster",
+        "realtime_bucket": "noise_buster_realtime",
+        "timeout": 20000,
+        "ssl": true
+    },
+    "LOCAL_LOGGING": true,
+    "PUSHOVER_CONFIG": {
+        "enabled": false,
+        "user_key": "<YOUR_PUSHOVER_USER_KEY>",
+        "api_token": "<YOUR_PUSHOVER_API_TOKEN>",
+        "title": "Noise Buster"
+    },
+    "WEATHER_CONFIG": {
+        "enabled": false,
+        "api_key": "<YOUR_OPENWEATHERMAP_API_KEY>",
+        "api_url": "http://api.openweathermap.org/data/2.5/weather",
+        "location": "City,CountryCode"
+    },
+    "MQTT_CONFIG": {
+        "enabled": false,
+        "server": "127.0.0.1",
+        "port": 1883,
+        "user": "<YOUR_MQTT_USERNAME>",
+        "password": "<YOUR_MQTT_PASSWORD>"
+    },
+    "CAMERA_CONFIG": {
+        "use_ip_camera": false,
+        "use_pi_camera": true,
+        "ip_camera_url": "",
+        "ip_camera_protocol": "rtsp",
+        "rotation": 0,
+        "hflip": false,
+        "vflip": false,
+        "resolution": [1024, 768]
+    },
+    "IMAGE_STORAGE_CONFIG": {
+        "store_in_db": false
+    },
+    "VIDEO_CONFIG": {
+        "enabled": true,
+        "fps": 10,
+        "buffer_seconds": 10,
+        "resolution": [1024, 768],
+        "retention_hours": 24,
+        "post_event_seconds": 5
+    },
+    "DEVICE_AND_NOISE_MONITORING_CONFIG": {
+        "device_name": "noise_buster_device",
+        "minimum_noise_level": 45,
+        "time_window_duration": 2,
+        "image_save_path": "./images/",
+        "image_retention_hours": 24,
+        "usb_vendor_id": "",
+        "usb_product_id": ""
+    },
+    "SERIAL_CONFIG": {
+      "enabled": false,
+      "port": "/dev/ttyUSB0",
+      "baudrate": 115200
+    },
+    "PLATE_RECOGNITION_CONFIG": {
+        "enabled": true,
+        "interval_minutes": 5
+    },
+    "TELRAAM_API_CONFIG": {
+        "api_url": "https://telraam-api.net/v1/reports/traffic",
+        "api_key": "<YOUR_TELRAAM_API_KEY>",
+        "segment_id": "<YOUR_SEGMENT_ID>",
+        "request_interval_minutes": 5,
+        "enabled": false
+    },
+    "TIMEZONE_CONFIG": {
+        "timezone_offset": 0
+    },
+    "DISCORD_CONFIG": {
+        "enabled": false,
+        "webhook_url": "<YOUR_DISCORD_WEBHOOK_URL>"
+    }
+}

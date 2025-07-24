@@ -294,3 +294,40 @@ Copy
 Edit
 sudo udevadm control --reload
 sudo udevadm trigger
+
+---
+
+## Running on Windows (via WSL)
+
+To run this project on Windows, use the Windows Subsystem for Linux (WSL).
+
+1.  **Install Prerequisites:**
+    Open your WSL terminal and run the following command to install all necessary system packages:
+    ```bash
+    sudo apt-get update && sudo apt-get install -y python3-pip python3-venv git tesseract-ocr python3-distutils
+    ```
+
+2.  **Clone and Set Up Project:**
+    ```bash
+    git clone https://github.com/silkyclouds/NoiseBuster.git
+    cd NoiseBuster
+    python3 -m venv .wsl_venv
+    source .wsl_venv/bin/activate
+    ```
+
+3.  **Install Python Dependencies:**
+    ```bash
+    pip install -r requirements_no_pi.txt
+    ```
+
+4.  **Run the Application:**
+    ```bash
+    python noisebuster.py
+    ```
+
+### Quick Troubleshooting
+
+-   If you encounter `numpy`/`opencv` version errors, run this command:
+    ```bash
+    pip uninstall -y opencv-python-headless numpy && pip install opencv-python-headless
+    ```
