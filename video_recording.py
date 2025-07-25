@@ -1,6 +1,10 @@
 #!/usr/bin/env python3
 # Video Recording Implementation for NoiseBuster
-# This module implements circular buffer video recording for Pi Camera
+# This module implements a robust circular buffer using deque and cv2.VideoWriter.
+
+import logging
+# THIS IS A NEW FILE - VERSION 4 - IF YOU SEE THIS, THE SCRIPT IS UPDATED
+logging.getLogger(__name__).critical("SUCCESS: Running video_recording.py version 4 (cv2.VideoWriter method)")
 
 import threading
 import time
@@ -9,338 +13,248 @@ import cv2
 import numpy as np
 from collections import deque
 from datetime import datetime
-import logging
+import traceback
 
 logger = logging.getLogger(__name__)
 
+try:
+    from picamera2 import Picamera2
+    PICAMERA2_IMPORTED = True
+except ImportError:
+    PICAMERA2_IMPORTED = False
+    logger.error("picamera2 library not found. Video recording will be disabled.")
+
 class CircularVideoBuffer:
-    """Circular buffer for video frames with Pi Camera support"""
+    """A robust circular buffer for video frames using deque and OpenCV."""
     
     def __init__(self, fps=10, buffer_seconds=10, resolution=(640, 480)):
+        if not PICAMERA2_IMPORTED:
+            raise ImportError("picamera2 library is required for video recording.")
+
         self.fps = fps
-        self.buffer_seconds = buffer_seconds
         self.resolution = resolution
-        self.max_frames = fps * buffer_seconds
+        self.max_frames = int(fps * buffer_seconds)
         
-        # Circular buffer for frames
         self.frame_buffer = deque(maxlen=self.max_frames)
-        self.timestamp_buffer = deque(maxlen=self.max_frames)
         
-        # Threading
-        self.buffer_lock = threading.Lock()
-        self.recording_thread = None
+        self.picam2 = None
         self.capture_thread = None
         self.should_stop = threading.Event()
         self.is_recording_event = False
-        
-        # Pi Camera
-        self.picam2 = None
-        self.camera_lock = threading.Lock()
+        self.recording_event_lock = threading.Lock()
         
         logger.info(f"Circular video buffer initialized: {fps}fps, {buffer_seconds}s buffer, {resolution} resolution")
-    
-    def initialize_camera(self):
-        """Initialize Pi camera for video capture"""
+
+    def start(self):
+        """Initializes and starts the camera capture thread."""
         try:
-            from picamera2 import Picamera2
-            
             self.picam2 = Picamera2()
-            
-            # Configure for video capture
-            video_config = self.picam2.create_video_configuration()
-            video_config["main"]["size"] = self.resolution
-            video_config["main"]["format"] = "RGB888"  # RGB format for easier processing
-            video_config["buffer_count"] = 4  # Reduce buffer count for lower latency
-            
+            video_config = self.picam2.create_video_configuration(
+                main={"size": self.resolution, "format": "RGB888"},
+                controls={"FrameRate": self.fps}
+            )
             self.picam2.configure(video_config)
             self.picam2.start()
-            
-            # Give camera time to settle
-            time.sleep(2)
-            
-            logger.info(f"Pi camera initialized for video: {self.resolution} @ {self.fps}fps")
-            return True
-            
+            time.sleep(2) # Allow camera to warm up
+            logger.info("Pi camera initialized successfully.")
         except Exception as e:
-            logger.error(f"Failed to initialize Pi camera for video: {str(e)}")
+            logger.error(f"Failed to initialize Pi camera: {e}")
+            logger.debug(traceback.format_exc())
             return False
-    
-    def start_continuous_capture(self):
-        """Start continuous frame capture in background thread"""
-        if self.capture_thread and self.capture_thread.is_alive():
-            logger.warning("Capture thread already running")
-            return
-        
-        if not self.initialize_camera():
-            logger.error("Cannot start capture - camera initialization failed")
-            return
-        
+
         self.should_stop.clear()
-        self.capture_thread = threading.Thread(target=self._continuous_capture_loop)
+        self.capture_thread = threading.Thread(target=self._capture_loop)
         self.capture_thread.daemon = True
         self.capture_thread.start()
-        
-        logger.info("Started continuous video capture")
-    
-    def _continuous_capture_loop(self):
-        """Continuous capture loop for circular buffer with auto-recovery"""
+        logger.info("Started continuous video capture thread.")
+        return True
+
+    def _capture_loop(self):
+        """The main loop for capturing frames and adding them to the buffer."""
+        logger.info("Capture loop started.")
         frame_interval = 1.0 / self.fps
-        last_capture_time = 0
-
         while not self.should_stop.is_set():
-            current_time = time.time()
-
-            # Maintain target FPS
-            if current_time - last_capture_time < frame_interval:
-                time.sleep(0.01)
-                continue
-
+            start_time = time.time()
             try:
-                # Capture frame from Pi camera
-                with self.camera_lock:
-                    if self.picam2:
-                        frame = self.picam2.capture_array()
-                        if frame is not None:
-                            # Convert RGB to BGR for OpenCV compatibility
-                            if len(frame.shape) == 3 and frame.shape[2] == 3:
-                                frame_bgr = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
-                            else:
-                                frame_bgr = frame
-                            # Add to circular buffer
-                            with self.buffer_lock:
-                                self.frame_buffer.append(frame_bgr.copy())
-                                self.timestamp_buffer.append(current_time)
-                            last_capture_time = current_time
-                        else:
-                            logger.warning("Captured frame is None.")
-                    else:
-                        logger.warning("Pi camera object is None in capture loop.")
+                frame = self.picam2.capture_array()
+                if frame is not None:
+                    # picamera2 captures in RGB, convert to BGR for OpenCV
+                    frame_bgr = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
+                    self.frame_buffer.append(frame_bgr)
+                else:
+                    logger.warning("Captured a null frame from camera.")
+                
+                # Sleep to maintain FPS
+                elapsed = time.time() - start_time
+                sleep_time = frame_interval - elapsed
+                if sleep_time > 0:
+                    time.sleep(sleep_time)
+
             except Exception as e:
-                logger.error(f"Error capturing frame: {str(e)}")
-                # Attempt to reinitialize the camera after a short delay
-                logger.info("Attempting to reinitialize Pi camera after error...")
-                with self.camera_lock:
+                logger.error(f"Error in capture loop: {e}")
+                logger.debug(traceback.format_exc())
+                # If the camera timed out, try to restart it.
+                if "Camera frontend has timed out" in str(e):
+                    logger.warning("Camera timeout detected. Attempting to restart camera...")
                     try:
-                        if self.picam2:
-                            self.picam2.stop()
-                            self.picam2.close()
-                    except Exception:
-                        pass
-                    self.picam2 = None
-                    time.sleep(2)
-                    self.initialize_camera()
-                time.sleep(1)
-    
+                        self.picam2.stop()
+                        self.picam2.start()
+                        logger.info("Camera restarted successfully.")
+                    except Exception as restart_e:
+                        logger.error(f"Failed to restart camera: {restart_e}")
+                time.sleep(1) # Wait a second before retrying
+
     def trigger_event_recording(self, noise_level, temperature=None, weather_description="", precipitation=0.0, post_event_seconds=5):
-        """Trigger recording of event (pre-buffer + post-event)"""
-        if self.is_recording_event:
-            logger.warning("Event recording already in progress, skipping")
-            return
-        
-        self.is_recording_event = True
-        
-        # Start recording in separate thread
+        """Triggers the recording of the current buffer plus post-event frames."""
+        with self.recording_event_lock:
+            if self.is_recording_event:
+                logger.warning("Event recording already in progress, skipping.")
+                return
+            self.is_recording_event = True
+
         recording_thread = threading.Thread(
             target=self._record_event,
             args=(noise_level, temperature, weather_description, precipitation, post_event_seconds)
         )
         recording_thread.daemon = True
         recording_thread.start()
-    
+
     def _record_event(self, noise_level, temperature, weather_description, precipitation, post_event_seconds):
-        """Record event video (pre-buffer + post-event duration)"""
+        """Handles the actual video file creation."""
+        logger.info("Starting event recording process...")
+        final_filepath = ""
         video_writer = None
-        filepath = ""
-        pre_event_frames_len = 0
-        frames_recorded = 0
+        all_frames = []
+
         try:
-            event_timestamp = datetime.now()
+            # 1. Immediately grab all frames (pre and post)
+            # This minimizes the time spent blocking other recordings.
+            pre_event_frames = list(self.frame_buffer)
+            all_frames.extend(pre_event_frames)
             
-            # Create filename
-            formatted_time = event_timestamp.strftime("%Y-%m-%d_%H-%M-%S")
-            weather_info = f"{weather_description.replace(' ', '_')}_{temperature}C" if weather_description else "no_weather"
-            filename = f"video_{formatted_time}_{weather_info}_{noise_level}dB.mp4"
-            
-            # Create video save path
+            post_event_frame_count = int(self.fps * post_event_seconds)
+            frames_recorded = 0
+            while frames_recorded < post_event_frame_count:
+                frame = self.picam2.capture_array()
+                if frame is not None:
+                    frame_bgr = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
+                    all_frames.append(frame_bgr)
+                    frames_recorded += 1
+                # A small sleep is still needed to not overwhelm the camera
+                time.sleep(1 / self.fps)
+
+            logger.info(f"Collected {len(pre_event_frames)} pre-event and {frames_recorded} post-event frames.")
+
+            # 2. Now, write the collected frames to a file.
             video_save_path = os.path.join(os.getcwd(), "videos")
             if not os.path.exists(video_save_path):
                 os.makedirs(video_save_path)
-                logger.info(f"Created video directory: {video_save_path}")
-            
-            filepath = os.path.join(video_save_path, filename)
-            
-            # Get current buffer frames (pre-event)
-            with self.buffer_lock:
-                pre_event_frames = list(self.frame_buffer)
-            pre_event_frames_len = len(pre_event_frames)
-            
-            logger.info(f"Starting event recording: {pre_event_frames_len} pre-event frames, {post_event_seconds}s post-event")
-            
-            # Initialize video writer
+
+            event_timestamp = datetime.now()
+            formatted_time = event_timestamp.strftime("%Y-%m-%d_%H-%M-%S")
+            weather_info = f"{weather_description.replace(' ', '_')}_{temperature}C" if weather_description else "no_weather"
+            filename = f"video_{formatted_time}_{weather_info}_{noise_level}dB.mp4"
+            final_filepath = os.path.join(video_save_path, filename)
+
             fourcc = cv2.VideoWriter_fourcc(*'mp4v')
-            video_writer = cv2.VideoWriter(filepath, fourcc, self.fps, self.resolution)
-            
+            video_writer = cv2.VideoWriter(final_filepath, fourcc, self.fps, self.resolution)
+
             if not video_writer.isOpened():
-                logger.error(f"Failed to open video writer for {filepath}")
+                logger.error(f"Failed to open video writer for {final_filepath}")
+                # The finally block will still run to reset the flag
                 return
+
+            logger.info(f"Writing {len(all_frames)} total frames to {final_filepath}...")
+            for frame in all_frames:
+                self._add_overlay_to_frame(frame, event_timestamp, noise_level, temperature, weather_description, precipitation)
+                video_writer.write(frame)
             
-            # Write pre-event frames
-            for frame in pre_event_frames:
-                if frame is not None:
-                    display_frame = self._add_overlay_to_frame(
-                        frame.copy(), event_timestamp, noise_level, temperature, weather_description, precipitation
-                    )
-                    video_writer.write(display_frame)
-            
-            # Record post-event frames
-            post_event_frame_count = int(self.fps * post_event_seconds)
-            
-            start_time = time.time()
-            while frames_recorded < post_event_frame_count and not self.should_stop.is_set():
-                try:
-                    with self.camera_lock:
-                        if self.picam2:
-                            frame = self.picam2.capture_array()
-                            if frame is not None:
-                                if len(frame.shape) == 3 and frame.shape[2] == 3:
-                                    frame_bgr = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
-                                else:
-                                    frame_bgr = frame
-                                display_frame = self._add_overlay_to_frame(
-                                    frame_bgr.copy(), event_timestamp, noise_level, temperature, weather_description, precipitation
-                                )
-                                video_writer.write(display_frame)
-                                frames_recorded += 1
-                    
-                    elapsed = time.time() - start_time
-                    expected_time = frames_recorded / self.fps
-                    if elapsed < expected_time:
-                        time.sleep(expected_time - elapsed)
-                        
-                except Exception as e:
-                    logger.error(f"Error recording post-event frame: {str(e)}")
-                    time.sleep(1.0 / self.fps)
-                    
+            logger.info("Finished writing frames.")
+
         except Exception as e:
-            logger.error(f"Error during event recording: {str(e)}")
-            logger.debug("Full traceback:", exc_info=True)
+            logger.error(f"Exception during video file creation: {e}")
+            logger.debug(traceback.format_exc())
         finally:
-            if video_writer and video_writer.isOpened():
+            if video_writer:
                 video_writer.release()
-                if os.path.exists(filepath) and os.path.getsize(filepath) > 0:
-                    logger.info(f"Event video saved successfully: {filepath}")
-                    logger.info(f"Video stats: {pre_event_frames_len} pre-event + {frames_recorded} post-event frames")
-                else:
-                    logger.error(f"Video file was not created or is empty: {filepath}")
-            self.is_recording_event = False
-    
-    def _add_overlay_to_frame(self, frame, timestamp, noise_level, temperature, weather_description, precipitation):
-        """Add text overlay to video frame"""
-        try:
-            formatted_time = timestamp.strftime("%Y-%m-%d %H:%M:%S")
-            
-            text_lines = [
-                f"Time: {formatted_time}",
-                f"Noise: {noise_level} dB",
-            ]
-            
-            if temperature is not None:
-                text_lines.append(f"Temp: {temperature}C")
-            if weather_description:
-                text_lines.append(f"Weather: {weather_description}")
-            if precipitation > 0:
-                text_lines.append(f"Rain: {precipitation}mm")
-            
-            # Add text with better visibility
-            y_position = 30
-            for line in text_lines:
-                # Black outline
-                cv2.putText(frame, line, (10, y_position), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 0), 2)
-                # White text
-                cv2.putText(frame, line, (10, y_position), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 1)
-                y_position += 25
-            
-            return frame
-            
-        except Exception as e:
-            logger.error(f"Error adding overlay to frame: {str(e)}")
-            return frame
-    
-    def cleanup_old_videos(self, retention_hours=24):
-        """Clean up old video files"""
-        video_path = os.path.join(os.getcwd(), "videos")
-        if not os.path.exists(video_path):
-            return
-        
-        try:
-            current_time = datetime.now()
-            for filename in os.listdir(video_path):
-                if filename.endswith('.mp4'):
-                    filepath = os.path.join(video_path, filename)
-                    if os.path.isfile(filepath):
-                        file_creation_time = datetime.fromtimestamp(os.path.getctime(filepath))
-                        time_diff = current_time - file_creation_time
-                        if time_diff.total_seconds() > (retention_hours * 3600):
-                            os.remove(filepath)
-                            logger.info(f"Deleted old video: {filename}")
-        except Exception as e:
-            logger.error(f"Error cleaning up old videos: {str(e)}")
-    
-    def stop_capture(self):
-        """Stop continuous capture and cleanup"""
-        logger.info("Stopping video capture...")
-        
-        self.should_stop.set()
-        
-        # Wait for capture thread to finish
-        if self.capture_thread and self.capture_thread.is_alive():
-            self.capture_thread.join(timeout=5)
-        
-        # Cleanup camera
-        with self.camera_lock:
-            if self.picam2:
-                try:
-                    self.picam2.stop()
-                    self.picam2.close()
-                    logger.info("Pi camera stopped and closed")
-                except Exception as e:
-                    logger.warning(f"Error stopping camera: {str(e)}")
-                finally:
-                    self.picam2 = None
-        
-        logger.info("Video capture stopped")
-    
-    def get_latest_frame(self):
-        """Return the latest frame from the buffer, or None if empty."""
-        with self.buffer_lock:
-            if self.frame_buffer:
-                return self.frame_buffer[-1].copy()
+                logger.info("Video writer released.")
+
+            if os.path.exists(final_filepath) and os.path.getsize(final_filepath) > 0:
+                logger.info(f"Event video saved successfully: {final_filepath}")
+                self._cleanup_videos(video_save_path, keep_latest=final_filepath)
             else:
-                return None
+                logger.error(f"Video file was not created or is empty: {final_filepath}")
 
+            # This is the most critical part: ensuring the flag is always reset.
+            with self.recording_event_lock:
+                self.is_recording_event = False
+                logger.info("Event recording finished, flag reset.")
 
-# Integration functions for your main NoiseBuster script
+    def _add_overlay_to_frame(self, frame, timestamp, noise_level, temperature, weather_description, precipitation):
+        """Adds text overlay directly to the frame."""
+        formatted_time = timestamp.strftime("%Y-%m-%d %H:%M:%S")
+        text_lines = [f"Time: {formatted_time}", f"Noise: {noise_level} dB"]
+        if temperature is not None: text_lines.append(f"Temp: {temperature}C")
+        if weather_description: text_lines.append(f"Weather: {weather_description}")
+        if precipitation > 0: text_lines.append(f"Rain: {precipitation}mm")
+        
+        y_position = 30
+        for line in text_lines:
+            cv2.putText(frame, line, (10, y_position), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 0), 2)
+            cv2.putText(frame, line, (10, y_position), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 1)
+            y_position += 25
+
+    def _cleanup_videos(self, path, keep_latest):
+        logger.info(f"Cleaning up old videos, keeping {os.path.basename(keep_latest)}")
+        try:
+            for filename in os.listdir(path):
+                filepath = os.path.join(path, filename)
+                if filename.endswith('.mp4') and filepath != keep_latest:
+                    os.remove(filepath)
+                    logger.info(f"Removed old video: {filename}")
+        except Exception as e:
+            logger.error(f"Error during video cleanup: {e}")
+
+    def stop(self):
+        logger.info("Stopping video capture...")
+        self.should_stop.set()
+        if self.capture_thread:
+            self.capture_thread.join(timeout=2)
+        if self.picam2:
+            self.picam2.stop()
+            self.picam2.close()
+        logger.info("Video capture system stopped.")
+
+# --- Integration functions for your main NoiseBuster script ---
 
 def initialize_video_system(config):
-    """Initialize the video recording system"""
     video_config = config.get("VIDEO_CONFIG", {})
-    
     if not video_config.get("enabled", False):
+        logger.info("Video recording is disabled in config.")
         return None
     
-    fps = video_config.get("fps", 10)
-    buffer_seconds = video_config.get("buffer_seconds", 10)
-    resolution = tuple(video_config.get("resolution", [640, 480]))
-    
-    video_buffer = CircularVideoBuffer(fps=fps, buffer_seconds=buffer_seconds, resolution=resolution)
-    
-    # Start continuous capture
-    video_buffer.start_continuous_capture()
-    
-    return video_buffer
+    if not PICAMERA2_IMPORTED:
+        logger.error("Cannot initialize video system because picamera2 library is not installed.")
+        return None
+
+    try:
+        fps = video_config.get("fps", 10)
+        buffer_seconds = video_config.get("buffer_seconds", 10)
+        resolution = tuple(video_config.get("resolution", [640, 480]))
+        
+        video_buffer = CircularVideoBuffer(fps=fps, buffer_seconds=buffer_seconds, resolution=resolution)
+        
+        if video_buffer.start():
+            return video_buffer
+        else:
+            logger.error("CircularVideoBuffer failed to start.")
+            return None
+    except Exception as e:
+        logger.error(f"An error occurred during video system initialization: {e}")
+        logger.debug(traceback.format_exc())
+        return None
 
 def trigger_video_recording(video_buffer, noise_level, temperature, weather_description, precipitation, config):
-    """Trigger video recording for noise event"""
     if video_buffer:
         video_config = config.get("VIDEO_CONFIG", {})
         post_event_seconds = video_config.get("post_event_seconds", 5)
@@ -353,7 +267,5 @@ def trigger_video_recording(video_buffer, noise_level, temperature, weather_desc
         )
 
 def cleanup_video_system(video_buffer):
-    """Cleanup video system on shutdown"""
     if video_buffer:
-        video_buffer.stop_capture()
-
+        video_buffer.stop()

@@ -21,7 +21,7 @@ from queue import Queue
 import socket
 import urllib.parse
 import http.client
-from video_recording import CircularVideoBuffer, initialize_video_system, trigger_video_recording, cleanup_video_system
+# Only use libcamera-vid for video recording
 from dotenv import load_dotenv
 
 # Required modules for USB-based sound meter and scheduling
@@ -53,6 +53,38 @@ import usb.core
 import usb.util
 import requests
 import schedule
+import subprocess
+
+def record_video_libcamera(filename, duration=5, resolution="1024x768", framerate=10):
+    width, height = resolution.split('x')
+    cmd = [
+        "libcamera-vid",
+        "-t", str(duration * 1000),
+        "-o", filename,
+        "--width", width,
+        "--height", height,
+        "--framerate", str(framerate)
+    ]
+    try:
+        subprocess.run(cmd, check=True)
+        logger.info(f"Video recorded: {filename}")
+    except Exception as e:
+        logger.error(f"libcamera-vid failed: {e}")
+
+def trigger_video_recording(noise_level, temperature, weather_description, precipitation, config):
+    # Use libcamera-vid for lightweight video recording
+    video_config = config.get("VIDEO_CONFIG", {})
+    post_event_seconds = video_config.get("post_event_seconds", 5)
+    resolution = "{}x{}".format(*video_config.get("resolution", [1024, 768]))
+    framerate = video_config.get("fps", 10)
+    video_save_path = os.path.join(os.getcwd(), "videos")
+    if not os.path.exists(video_save_path):
+        os.makedirs(video_save_path)
+    event_timestamp = datetime.now()
+    formatted_time = event_timestamp.strftime("%Y-%m-%d_%H-%M-%S")
+    filename = f"video_{formatted_time}_{noise_level}dB.h264"
+    filepath = os.path.join(video_save_path, filename)
+    record_video_libcamera(filepath, duration=post_event_seconds, resolution=resolution, framerate=framerate)
 
 # We will try to import serial (for Alexander's feature)
 try:
@@ -70,7 +102,6 @@ np = None
 #camera
 global_picam2 = None
 camera_lock = threading.Lock()
-video_buffer = None
 
 # Load config from config.json
 def load_config(config_path):
@@ -144,7 +175,7 @@ logger.addHandler(ch)
 
 # File handler: only add if LOCAL_LOGGING is enabled in config
 if config.get("LOCAL_LOGGING", True):
-    fh = logging.FileHandler('noisebuster.log')
+    fh = logging.FileHandler('noisebuster.log', mode='w')
     fh.setLevel(logging.DEBUG)
     file_formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
     fh.setFormatter(file_formatter)
@@ -576,110 +607,9 @@ def send_to_mqtt(topic, payload):
 
 
 def capture_image_fast(current_peak_dB, peak_temperature, peak_weather_description, peak_precipitation, timestamp):
-    global global_picam2
-    global video_buffer
-
-    frame = None
-
-    # Use video buffer if video recording is enabled and buffer is available
-    if VIDEO_CONFIG.get("enabled") and video_buffer:
-        try:
-            frame = video_buffer.get_latest_frame()
-            if frame is None:
-                logger.error("No frame available from video buffer for still image.")
-                return
-        except Exception as e:
-            logger.error(f"Error getting frame from video buffer: {str(e)}")
-            return
-
-    elif CAMERA_CONFIG.get("use_ip_camera"):
-        if cv2 is None:
-            logger.error("OpenCV not installed. Can't capture images.")
-            return
-        try:
-            cap = cv2.VideoCapture(CAMERA_CONFIG["ip_camera_url"])
-            ret, frame = cap.read()
-            cap.release()
-            if not ret or frame is None:
-                logger.error("Failed to capture from IP camera")
-                return
-        except Exception as e:
-            logger.error(f"Error capturing from IP camera: {str(e)}")
-            return
-    
-    elif CAMERA_CONFIG.get("use_pi_camera"):
-        # Only use direct camera if video is not enabled
-        if VIDEO_CONFIG.get("enabled"):
-            logger.error("Direct Pi camera access disabled when video recording is enabled.")
-            return
-        
-        try:
-            with camera_lock:  # Thread safety
-                # Fast capture - camera is already running
-                frame = global_picam2.capture_array()
-                
-                if frame is None:
-                    logger.error("Failed to capture frame - frame is None")
-                    return
-                
-                # Convert from RGB to BGR for OpenCV (picamera2 outputs RGB by default)
-                if len(frame.shape) == 3 and frame.shape[2] == 3:
-                    frame = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
-                else:
-                    logger.warning(f"Unexpected frame format: {frame.shape}")
-                
-        except Exception as e:
-            logger.error(f"Failed to capture from Pi camera: {str(e)}")
-            logger.debug("Full traceback:", exc_info=True)
-            return
-    else:
-        logger.debug("No camera usage configured.")
-        return
-
-    # Process and save the captured frame
-    if frame is not None:
-        try:
-            # Create timestamp and weather info for filename
-            formatted_time = timestamp.strftime("%Y-%m-%d_%H:%M:%S")
-            weather_info = f"{peak_weather_description.replace(' ', '_')}_{peak_temperature}C" if peak_weather_description else "no_weather"
-            filename = f"{formatted_time}_{weather_info}_{current_peak_dB}dB.jpg"
-            filepath = os.path.join(DEVICE_AND_NOISE_MONITORING_CONFIG['image_save_path'], filename)
-
-            # Create directory if it doesn't exist
-            if not os.path.exists(DEVICE_AND_NOISE_MONITORING_CONFIG['image_save_path']):
-                os.makedirs(DEVICE_AND_NOISE_MONITORING_CONFIG['image_save_path'])
-                logger.info(f"Created directory: {DEVICE_AND_NOISE_MONITORING_CONFIG['image_save_path']}")
-
-            # Add text overlay to image
-            text_lines = [
-                f"Time: {formatted_time}",
-                f"Noise: {current_peak_dB} dB"
-                # f"Temp: {peak_temperature}C" if peak_temperature else "Temp: N/A",
-                # f"Weather: {peak_weather_description}" if peak_weather_description else "Weather: N/A",
-                # f"Precipitation: {peak_precipitation}mm" if peak_precipitation else "Precipitation: N/A"
-            ]
-            
-            # Add text with better visibility (white text with black outline)
-            y_position = 50
-            for line in text_lines:
-                # Black outline
-                cv2.putText(frame, line, (10, y_position), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 0), 3)
-                # White text
-                cv2.putText(frame, line, (10, y_position), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
-                y_position += 35
-
-            # Save the image
-            success = cv2.imwrite(filepath, frame)
-            if success:
-                logger.info(f"Image saved successfully: {filepath}")
-            else:
-                logger.error(f"Failed to save image: {filepath}")
-                
-        except Exception as e:
-            logger.error(f"Error processing/saving image: {str(e)}")
-            logger.debug("Full traceback:", exc_info=True)
-    else:
-        logger.error("No frame captured from any camera source")
+    # Function disabled: no camera capture when using libcamera-vid for video events
+    logger.info("capture_image_fast is disabled. Use libcamera-vid for video events.")
+    return
         
 
 
@@ -766,6 +696,7 @@ def update_noise_level():
             sys.exit(1)
         logger.info("Noise monitoring on USB device.")
 
+    last_above_threshold = False
     while True:
         current_time = time.time()
         if (current_time - window_start_time) >= DEVICE_AND_NOISE_MONITORING_CONFIG['time_window_duration']:
@@ -801,7 +732,9 @@ def update_noise_level():
                 send_to_mqtt(realtime_topic, realtime_payload)
 
             # If above threshold
-            if current_peak_dB >= DEVICE_AND_NOISE_MONITORING_CONFIG['minimum_noise_level']:
+            above_threshold = current_peak_dB >= DEVICE_AND_NOISE_MONITORING_CONFIG['minimum_noise_level']
+            # Only trigger on rising edge
+            if above_threshold and not last_above_threshold:
                 peak_temp_float = float(peak_temperature) if peak_temperature else 0.0
                 peak_weather_desc = peak_weather_description if peak_weather_description else ""
                 main_data = {
@@ -836,17 +769,21 @@ def update_noise_level():
                 # Camera
                 #capture_image_fast(current_peak_dB, peak_temp_float, peak_weather_desc, peak_precipitation_float, timestamp)
 
-                # NEW: video recording
-                if video_buffer and VIDEO_CONFIG.get("enabled"):
-                    logger.info("Triggering video recording for noise event")
-                    trigger_video_recording(
-                        video_buffer=video_buffer,
-                        noise_level=round(current_peak_dB, 1),
-                        temperature=peak_temp_float,
-                        weather_description=peak_weather_desc,
-                        precipitation=peak_precipitation_float,
-                        config=config
-                    )
+                # NEW: video recording (libcamera-vid)
+                if VIDEO_CONFIG.get("enabled"):
+                    logger.info("Triggering video recording for noise event (libcamera-vid)")
+                    try:
+                        trigger_video_recording(
+                            noise_level=round(current_peak_dB, 1),
+                            temperature=peak_temp_float,
+                            weather_description=peak_weather_desc,
+                            precipitation=peak_precipitation_float,
+                            config=config
+                        )
+                    except Exception:
+                        logger.error("An unhandled exception occurred during video recording trigger:")
+                        traceback.print_exc()
+            last_above_threshold = above_threshold
 
             # reset
             window_start_time = current_time
@@ -910,11 +847,7 @@ def schedule_tasks():
         if INFLUXDB_CONFIG.get("enabled"):
             schedule.every(1).minutes.do(retry_failed_writes)
 
-        # Video cleanup scheduling
-        if VIDEO_CONFIG.get("enabled") and video_buffer:
-            retention_hours = VIDEO_CONFIG.get("retention_hours", 24)
-            schedule.every().hour.do(lambda: video_buffer.cleanup_old_videos(retention_hours))
-            logger.info(f"Video cleanup scheduled every hour (retention: {retention_hours}h)")
+        # Video cleanup scheduling (not needed for libcamera-vid)
 
     except Exception as e:
         logger.error(f"Error scheduling tasks: {str(e)}")
@@ -1035,7 +968,6 @@ def notify_on_start():
 # MAIN
 ####################################
 def main():
-    global video_buffer
 
     # Quick config checks
     dev_check = None
@@ -1058,14 +990,7 @@ def main():
             sys.exit(1)
         logger.info("Starting Noise Monitoring on USB device.")
 
-    # Initialize video recording system
-    if VIDEO_CONFIG.get("enabled"):
-        logger.info("Initializing video recording system...")
-        video_buffer = initialize_video_system(config)
-        if video_buffer:
-            logger.info("Video recording system initialized successfully")
-        else:
-            logger.error("Failed to initialize video recording system")
+    # No video buffer initialization needed for libcamera-vid
 
     # Possibly send a Pushover on start
     if PUSHOVER_CONFIG.get("enabled"):
@@ -1089,8 +1014,7 @@ def main():
         logger.info("Manual interruption by user.")
         if not VIDEO_CONFIG.get("enabled"):
             cleanup_pi_camera()  # Clean up on exit only if not using video
-        if video_buffer:
-            cleanup_video_system(video_buffer)
+        # No video buffer cleanup needed for libcamera-vid
 
 if __name__ == "__main__":
     main()
