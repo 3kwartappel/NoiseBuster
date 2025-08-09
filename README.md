@@ -331,3 +331,84 @@ To run this project on Windows, use the Windows Subsystem for Linux (WSL).
     ```bash
     pip uninstall -y opencv-python-headless numpy && pip install opencv-python-headless
     ```
+
+
+
+# Running NoiseBuster on Boot with Virtual Environment
+
+## Setup Steps
+
+1. **Create a shell script to activate the environment and run the app**
+
+Create a script `start_noisebuster.sh` in the project folder (`~/code/NoiseBuster`):
+
+```bash
+#!/bin/bash
+cd /home/pi/code/NoiseBuster
+source env/bin/activate
+python noisebuster.py
+Make it executable:
+
+bash
+Copy
+Edit
+chmod +x ~/code/NoiseBuster/start_noisebuster.sh
+Create a systemd service
+
+Create /etc/systemd/system/noisebuster.service with the following content:
+
+ini
+Copy
+Edit
+[Unit]
+Description=Start NoiseBuster on boot
+After=network.target
+
+[Service]
+User=pi
+WorkingDirectory=/home/pi/code/NoiseBuster
+ExecStart=/home/pi/code/NoiseBuster/start_noisebuster.sh
+Restart=always
+
+[Install]
+WantedBy=multi-user.target
+Enable and start the service
+
+bash
+Copy
+Edit
+sudo systemctl daemon-reload
+sudo systemctl enable noisebuster.service
+sudo systemctl start noisebuster.service
+How to Troubleshoot
+Check service status:
+
+bash
+Copy
+Edit
+sudo systemctl status noisebuster.service
+Follow live logs:
+
+bash
+Copy
+Edit
+journalctl -u noisebuster.service -f
+Common issues:
+
+Exec format error (status=203/EXEC):
+Ensure the script start_noisebuster.sh has the shebang line (#!/bin/bash) as the first line and is executable (chmod +x).
+
+Windows line endings:
+Convert the script to Unix format with:
+
+bash
+Copy
+Edit
+dos2unix ~/code/NoiseBuster/start_noisebuster.sh
+After making changes to the service or script, reload and restart:
+
+bash
+Copy
+Edit
+sudo systemctl daemon-reload
+sudo systemctl restart noisebuster.service
