@@ -4,7 +4,9 @@
 
 import logging
 # THIS IS A NEW FILE - VERSION 4 - IF YOU SEE THIS, THE SCRIPT IS UPDATED
-logging.getLogger(__name__).critical("SUCCESS: Running video_recording.py version 4 (cv2.VideoWriter method)")
+# Use logger instance for all logging
+logger = logging.getLogger(__name__)
+logger.critical("SUCCESS: Running video_recording.py version 4 (cv2.VideoWriter method)")
 
 import threading
 import time
@@ -15,8 +17,6 @@ from collections import deque
 from datetime import datetime
 import traceback
 
-logger = logging.getLogger(__name__)
-
 try:
     from picamera2 import Picamera2
     PICAMERA2_IMPORTED = True
@@ -26,7 +26,7 @@ except ImportError:
 
 class CircularVideoBuffer:
     """A robust circular buffer for video frames using deque and OpenCV."""
-    
+
     def __init__(self, fps=10, buffer_seconds=10, resolution=(640, 480)):
         if not PICAMERA2_IMPORTED:
             raise ImportError("picamera2 library is required for video recording.")
@@ -34,15 +34,12 @@ class CircularVideoBuffer:
         self.fps = fps
         self.resolution = resolution
         self.max_frames = int(fps * buffer_seconds)
-        
         self.frame_buffer = deque(maxlen=self.max_frames)
-        
         self.picam2 = None
         self.capture_thread = None
         self.should_stop = threading.Event()
         self.is_recording_event = False
         self.recording_event_lock = threading.Lock()
-        
         logger.info(f"Circular video buffer initialized: {fps}fps, {buffer_seconds}s buffer, {resolution} resolution")
 
     def start(self):
@@ -55,7 +52,7 @@ class CircularVideoBuffer:
             )
             self.picam2.configure(video_config)
             self.picam2.start()
-            time.sleep(2) # Allow camera to warm up
+            time.sleep(2) # Allow camera to warm up (could be configurable)
             logger.info("Pi camera initialized successfully.")
         except Exception as e:
             logger.error(f"Failed to initialize Pi camera: {e}")
@@ -83,13 +80,11 @@ class CircularVideoBuffer:
                     self.frame_buffer.append(frame_bgr)
                 else:
                     logger.warning("Captured a null frame from camera.")
-                
                 # Sleep to maintain FPS
                 elapsed = time.time() - start_time
                 sleep_time = frame_interval - elapsed
                 if sleep_time > 0:
                     time.sleep(sleep_time)
-
             except Exception as e:
                 logger.error(f"Error in capture loop: {e}")
                 logger.debug(traceback.format_exc())
@@ -131,7 +126,7 @@ class CircularVideoBuffer:
             # This minimizes the time spent blocking other recordings.
             pre_event_frames = list(self.frame_buffer)
             all_frames.extend(pre_event_frames)
-            
+
             post_event_frame_count = int(self.fps * post_event_seconds)
             frames_recorded = 0
             while frames_recorded < post_event_frame_count:
@@ -166,9 +161,8 @@ class CircularVideoBuffer:
 
             logger.info(f"Writing {len(all_frames)} total frames to {final_filepath}...")
             for frame in all_frames:
-                self._add_overlay_to_frame(frame, event_timestamp, noise_level, temperature, weather_description, precipitation)
+                CircularVideoBuffer._add_overlay_to_frame(frame, event_timestamp, noise_level, temperature, weather_description, precipitation)
                 video_writer.write(frame)
-            
             logger.info("Finished writing frames.")
 
         except Exception as e:
@@ -190,14 +184,17 @@ class CircularVideoBuffer:
                 self.is_recording_event = False
                 logger.info("Event recording finished, flag reset.")
 
-    def _add_overlay_to_frame(self, frame, timestamp, noise_level, temperature, weather_description, precipitation):
+    @staticmethod
+    def _add_overlay_to_frame(frame, timestamp, noise_level, temperature, weather_description, precipitation):
         """Adds text overlay directly to the frame."""
         formatted_time = timestamp.strftime("%Y-%m-%d %H:%M:%S")
         text_lines = [f"Time: {formatted_time}", f"Noise: {noise_level} dB"]
-        if temperature is not None: text_lines.append(f"Temp: {temperature}C")
-        if weather_description: text_lines.append(f"Weather: {weather_description}")
-        if precipitation > 0: text_lines.append(f"Rain: {precipitation}mm")
-        
+        if temperature is not None:
+            text_lines.append(f"Temp: {temperature}C")
+        if weather_description:
+            text_lines.append(f"Weather: {weather_description}")
+        if precipitation > 0:
+            text_lines.append(f"Rain: {precipitation}mm")
         y_position = 30
         for line in text_lines:
             cv2.putText(frame, line, (10, y_position), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 0), 2)
@@ -221,8 +218,14 @@ class CircularVideoBuffer:
         if self.capture_thread:
             self.capture_thread.join(timeout=2)
         if self.picam2:
-            self.picam2.stop()
-            self.picam2.close()
+            try:
+                self.picam2.stop()
+            except Exception as e:
+                logger.warning(f"Error stopping camera: {e}")
+            try:
+                self.picam2.close()
+            except Exception as e:
+                logger.warning(f"Error closing camera: {e}")
         logger.info("Video capture system stopped.")
 
 # --- Integration functions for your main NoiseBuster script ---

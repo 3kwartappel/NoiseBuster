@@ -261,154 +261,143 @@ This project, NoiseBuster, created by Raphael Vael, is licensed under the Creati
 
 
 ## DAVID
-### how to ensure its valid permission
-
-run this to get the codes:
-lsusb 
-
-
-✅ 1. Open the udev rules file in vim
 bash
-Copy
-Edit
-sudo vim /etc/udev/rules.d/99-usb-soundmeter.rules
-✅ 2. Inside vim, add the rule
-Press i to enter insert mode, then paste:
-
-ini
-Copy
-Edit
-SUBSYSTEM=="usb", ATTR{idVendor}=="16c0", ATTR{idProduct}=="05dc", MODE="0666"
-✅ 3. Save and exit
-Press Esc, then type:
-
-ruby
-Copy
-Edit
-:wq
-and hit Enter.
-
-✅ 4. Reload udev rules and trigger
 bash
-Copy
-Edit
-sudo udevadm control --reload
-sudo udevadm trigger
+bash
+bash
+bash
+bash
+
+## DAVID
+### Ensuring Valid USB Device Permissions (Linux)
+
+To allow NoiseBuster to access your USB sound meter on Linux, you may need to set up proper udev rules for device permissions. Follow these steps:
+
+1. **Identify Your Device**
+   - Run the following command to list USB devices and note your sound meter's vendor and product IDs:
+     ```bash
+     lsusb
+     ```
+
+2. **Create a udev Rule**
+   - Open the udev rules file for editing:
+     ```bash
+     sudo vim /etc/udev/rules.d/99-usb-soundmeter.rules
+     ```
+   - Add a rule using your device's IDs (replace with your actual values):
+     ```ini
+     SUBSYSTEM=="usb", ATTR{idVendor}=="16c0", ATTR{idProduct}=="05dc", MODE="0666"
+     ```
+
+3. **Save and Exit**
+   - Press `Esc`, type `:wq`, and hit Enter to save and exit vim.
+
+4. **Reload udev Rules**
+   - Apply the new rules:
+     ```bash
+     sudo udevadm control --reload
+     sudo udevadm trigger
+     ```
+
+Your USB sound meter should now be accessible to NoiseBuster without permission errors.
 
 ---
 
-## Running on Windows (via WSL)
+## Running NoiseBuster on Windows (via WSL)
 
-To run this project on Windows, use the Windows Subsystem for Linux (WSL).
+You can run NoiseBuster on Windows using the Windows Subsystem for Linux (WSL). Here’s how:
 
-1.  **Install Prerequisites:**
-    Open your WSL terminal and run the following command to install all necessary system packages:
+1. **Install Prerequisites**
+   - Open your WSL terminal and install required packages:
+     ```bash
+     sudo apt-get update && sudo apt-get install -y python3-pip python3-venv git tesseract-ocr python3-distutils
+     ```
+
+2. **Clone and Set Up the Project**
+   - Clone the repository and set up a virtual environment:
+     ```bash
+     git clone https://github.com/silkyclouds/NoiseBuster.git
+     cd NoiseBuster
+     python3 -m venv .wsl_venv
+     source .wsl_venv/bin/activate
+     ```
+
+3. **Install Python Dependencies**
+   - Install the required packages:
+     ```bash
+     pip install -r requirements_no_pi.txt
+     ```
+
+4. **Run the Application**
+   - Start NoiseBuster:
+     ```bash
+     python noisebuster.py
+     ```
+
+### Troubleshooting (WSL)
+
+- If you encounter `numpy` or `opencv` version errors, try:
+  ```bash
+  pip uninstall -y opencv-python-headless numpy && pip install opencv-python-headless
+  ```
+
+---
+
+## Running NoiseBuster on Boot (Linux)
+
+To run NoiseBuster automatically on boot using a virtual environment:
+
+1. **Create a Startup Script**
+   - In your project folder, create `start_noisebuster.sh`:
+     ```bash
+     #!/bin/bash
+     cd /home/pi/code/NoiseBuster
+     source env/bin/activate
+     python noisebuster.py
+     ```
+   - Make the script executable:
+     ```bash
+     chmod +x /home/pi/code/NoiseBuster/start_noisebuster.sh
+     ```
+
+2. **Create a systemd Service**
+   - Create `/etc/systemd/system/noisebuster.service` with:
+     ```ini
+     [Unit]
+     Description=Start NoiseBuster on boot
+     After=network.target
+
+     [Service]
+     User=pi
+     WorkingDirectory=/home/pi/code/NoiseBuster
+     ExecStart=/home/pi/code/NoiseBuster/start_noisebuster.sh
+     Restart=always
+
+     [Install]
+     WantedBy=multi-user.target
+     ```
+
+3. **Enable and Start the Service**
+   - Reload systemd and enable the service:
+     ```bash
+     sudo systemctl daemon-reload
+     sudo systemctl enable noisebuster.service
+     sudo systemctl start noisebuster.service
+     ```
+
+### Troubleshooting (systemd)
+
+- **Exec format error (status=203/EXEC):**
+  - Ensure the script has the correct shebang (`#!/bin/bash`) and is executable.
+- **Windows line endings:**
+  - Convert the script to Unix format:
     ```bash
-    sudo apt-get update && sudo apt-get install -y python3-pip python3-venv git tesseract-ocr python3-distutils
+    dos2unix /home/pi/code/NoiseBuster/start_noisebuster.sh
     ```
-
-2.  **Clone and Set Up Project:**
-    ```bash
-    git clone https://github.com/silkyclouds/NoiseBuster.git
-    cd NoiseBuster
-    python3 -m venv .wsl_venv
-    source .wsl_venv/bin/activate
-    ```
-
-3.  **Install Python Dependencies:**
-    ```bash
-    pip install -r requirements_no_pi.txt
-    ```
-
-4.  **Run the Application:**
-    ```bash
-    python noisebuster.py
-    ```
-
-### Quick Troubleshooting
-
--   If you encounter `numpy`/`opencv` version errors, run this command:
-    ```bash
-    pip uninstall -y opencv-python-headless numpy && pip install opencv-python-headless
-    ```
-
-
-
-# Running NoiseBuster on Boot with Virtual Environment
-
-## Setup Steps
-
-1. **Create a shell script to activate the environment and run the app**
-
-Create a script `start_noisebuster.sh` in the project folder (`~/code/NoiseBuster`):
-
-```bash
-#!/bin/bash
-cd /home/pi/code/NoiseBuster
-source env/bin/activate
-python noisebuster.py
-Make it executable:
-
-bash
-Copy
-Edit
-chmod +x ~/code/NoiseBuster/start_noisebuster.sh
-Create a systemd service
-
-Create /etc/systemd/system/noisebuster.service with the following content:
-
-ini
-Copy
-Edit
-[Unit]
-Description=Start NoiseBuster on boot
-After=network.target
-
-[Service]
-User=pi
-WorkingDirectory=/home/pi/code/NoiseBuster
-ExecStart=/home/pi/code/NoiseBuster/start_noisebuster.sh
-Restart=always
-
-[Install]
-WantedBy=multi-user.target
-Enable and start the service
-
-bash
-Copy
-Edit
-sudo systemctl daemon-reload
-sudo systemctl enable noisebuster.service
-sudo systemctl start noisebuster.service
-How to Troubleshoot
-Check service status:
-
-bash
-Copy
-Edit
-sudo systemctl status noisebuster.service
-Follow live logs:
-
-bash
-Copy
-Edit
-journalctl -u noisebuster.service -f
-Common issues:
-
-Exec format error (status=203/EXEC):
-Ensure the script start_noisebuster.sh has the shebang line (#!/bin/bash) as the first line and is executable (chmod +x).
-
-Windows line endings:
-Convert the script to Unix format with:
-
-bash
-Copy
-Edit
-dos2unix ~/code/NoiseBuster/start_noisebuster.sh
-After making changes to the service or script, reload and restart:
-
-bash
-Copy
-Edit
-sudo systemctl daemon-reload
-sudo systemctl restart noisebuster.service
+- After changes, reload and restart:
+  ```bash
+  sudo systemctl daemon-reload
+  sudo systemctl restart noisebuster.service
+  ```
+- to stop
+  sudo systemctl stop noisebuster.service

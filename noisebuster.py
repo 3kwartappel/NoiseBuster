@@ -21,6 +21,7 @@ from queue import Queue
 import socket
 import urllib.parse
 import http.client
+import subprocess
 # Only use libcamera-vid for video recording
 from dotenv import load_dotenv
 
@@ -53,7 +54,6 @@ import usb.core
 import usb.util
 import requests
 import schedule
-import subprocess
 
 def record_video_libcamera(filename, duration=5, resolution="1024x768", framerate=10):
     width, height = resolution.split('x')
@@ -98,10 +98,6 @@ SYNCHRONOUS = None
 mqtt = None
 cv2 = None
 np = None
-
-#camera
-global_picam2 = None
-camera_lock = threading.Lock()
 
 # Load config from config.json
 def load_config(config_path):
@@ -607,22 +603,9 @@ def send_to_mqtt(topic, payload):
 
 
 def capture_image_fast(current_peak_dB, peak_temperature, peak_weather_description, peak_precipitation, timestamp):
-    # Function disabled: no camera capture when using libcamera-vid for video events
+    """Disabled: Use libcamera-vid for video events."""
     logger.info("capture_image_fast is disabled. Use libcamera-vid for video events.")
     return
-        
-
-
-def cleanup_pi_camera():
-    """Clean up Pi camera resources on shutdown"""
-    global global_picam2
-    if global_picam2:
-        try:
-            global_picam2.stop()
-            global_picam2.close()
-            logger.info("Pi camera cleaned up successfully")
-        except Exception as e:
-            logger.warning(f"Error cleaning up Pi camera: {str(e)}")
 
 def delete_old_images():
     image_path = DEVICE_AND_NOISE_MONITORING_CONFIG.get('image_save_path', './images')
@@ -963,6 +946,20 @@ def notify_on_start():
         f"Local Time: **{local_time}**\n"
     )
     send_discord_notification(message)
+
+####################################
+# CLEANUP PI CAMERA
+####################################
+def cleanup_pi_camera():
+    """Clean up Pi camera resources on shutdown"""
+    global global_picam2
+    if 'global_picam2' in globals() and global_picam2:
+        try:
+            global_picam2.stop()
+            global_picam2.close()
+            logger.info("Pi camera cleaned up successfully")
+        except Exception as e:
+            logger.warning(f"Error cleaning up Pi camera: {str(e)}")
 
 ####################################
 # MAIN
