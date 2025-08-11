@@ -24,6 +24,7 @@ import http.client
 import subprocess
 # Only use libcamera-vid for video recording
 from dotenv import load_dotenv
+from video_recording import start_video_buffer, stop_video_buffer, trigger_event_recording as vr_trigger
 
 # Required modules for USB-based sound meter and scheduling
 required_modules = [
@@ -56,6 +57,7 @@ import requests
 import schedule
 
 def record_video_libcamera(filename, duration=5, resolution="1024x768", framerate=10):
+    """Simple one-off recording (kept for fallback)."""
     width, height = resolution.split('x')
     cmd = [
         "libcamera-vid",
@@ -63,7 +65,9 @@ def record_video_libcamera(filename, duration=5, resolution="1024x768", framerat
         "-o", filename,
         "--width", width,
         "--height", height,
-        "--framerate", str(framerate)
+        "--framerate", str(framerate),
+        "-n",
+        "--inline",
     ]
     try:
         subprocess.run(cmd, check=True)
@@ -72,19 +76,16 @@ def record_video_libcamera(filename, duration=5, resolution="1024x768", framerat
         logger.error(f"libcamera-vid failed: {e}")
 
 def trigger_video_recording(noise_level, temperature, weather_description, precipitation, config):
-    # Use libcamera-vid for lightweight video recording
-    video_config = config.get("VIDEO_CONFIG", {})
-    post_event_seconds = video_config.get("post_event_seconds", 5)
-    resolution = "{}x{}".format(*video_config.get("resolution", [1024, 768]))
-    framerate = video_config.get("fps", 10)
-    video_save_path = os.path.join(os.getcwd(), "videos")
-    if not os.path.exists(video_save_path):
-        os.makedirs(video_save_path)
-    event_timestamp = datetime.now()
-    formatted_time = event_timestamp.strftime("%Y-%m-%d_%H-%M-%S")
-    filename = f"video_{formatted_time}_{noise_level}dB.h264"
-    filepath = os.path.join(video_save_path, filename)
-    record_video_libcamera(filepath, duration=post_event_seconds, resolution=resolution, framerate=framerate)
+    """Proxy to video_recording module trigger."""
+    if not VIDEO_CONFIG.get("enabled"):
+        return False
+    return vr_trigger(
+        noise_level=noise_level,
+        temperature=temperature,
+        weather_description=weather_description,
+        precipitation=precipitation,
+        video_config=config.get("VIDEO_CONFIG", {})
+    )
 
 # We will try to import serial (for Alexander's feature)
 try:
@@ -130,6 +131,8 @@ TELRAAM_API_CONFIG = config.get("TELRAAM_API_CONFIG", {})
 TIMEZONE_CONFIG = config.get("TIMEZONE_CONFIG", {})
 DISCORD_CONFIG = config.get("DISCORD_CONFIG", {})
 VIDEO_CONFIG = config.get("VIDEO_CONFIG", {})
+
+ # removed inline buffer helpers; using video_recording module
 
 # For serial usage
 SERIAL_CONFIG = config.get("SERIAL_CONFIG", {})
@@ -754,15 +757,18 @@ def update_noise_level():
 
                 # NEW: video recording (libcamera-vid)
                 if VIDEO_CONFIG.get("enabled"):
-                    logger.info("Triggering video recording for noise event (libcamera-vid)")
                     try:
-                        trigger_video_recording(
+                        started = trigger_video_recording(
                             noise_level=round(current_peak_dB, 1),
                             temperature=peak_temp_float,
                             weather_description=peak_weather_desc,
                             precipitation=peak_precipitation_float,
                             config=config
                         )
+                        if started:
+                            logger.info("Event recording started (pre/post window capture in progress).")
+                        else:
+                            logger.info("Event recording skipped (another in progress).")
                     except Exception:
                         logger.error("An unhandled exception occurred during video recording trigger:")
                         traceback.print_exc()
@@ -987,7 +993,11 @@ def main():
             sys.exit(1)
         logger.info("Starting Noise Monitoring on USB device.")
 
-    # No video buffer initialization needed for libcamera-vid
+    # Start circular buffer recorder via video_recording module
+    if VIDEO_CONFIG.get("enabled"):
+        started = start_video_buffer(VIDEO_CONFIG)
+        if not started:
+            logger.error("Video buffer failed to start; event videos will be unavailable.")
 
     # Possibly send a Pushover on start
     if PUSHOVER_CONFIG.get("enabled"):
@@ -1011,7 +1021,9 @@ def main():
         logger.info("Manual interruption by user.")
         if not VIDEO_CONFIG.get("enabled"):
             cleanup_pi_camera()  # Clean up on exit only if not using video
-        # No video buffer cleanup needed for libcamera-vid
+        else:
+            stop_video_buffer()
+        # No video buffer cleanup needed beyond stopping libcamera-vid
 
 if __name__ == "__main__":
     main()
