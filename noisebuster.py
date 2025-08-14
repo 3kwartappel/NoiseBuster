@@ -14,6 +14,8 @@ import traceback
 import socket
 from queue import Queue
 import schedule
+import usb.core
+import usb.util
 
 # Only use libcamera-vid for video recording
 try:
@@ -48,9 +50,7 @@ except FileNotFoundError as e:
     print(f"Configuration file not found: {e}")
     sys.exit(1)
 
-# Now actually import them
-import usb.core
-import usb.util
+# usb modules imported above
 
 
 def record_video_libcamera(filename, duration=5, resolution="1024x768", framerate=10):
@@ -316,7 +316,9 @@ def check_configuration():
             VIDEO_CONFIG["retention_hours"] = 24
 
         logger.info(
-            f"Video recording enabled: {VIDEO_CONFIG['fps']}fps, {VIDEO_CONFIG['buffer_seconds']}s buffer"
+            "Video recording enabled: %sfps, %ss buffer",
+            VIDEO_CONFIG["fps"],
+            VIDEO_CONFIG["buffer_seconds"],
         )
     else:
         logger.info("Video recording is disabled.")
@@ -326,7 +328,8 @@ def check_configuration():
         logger.error("No 'minimum_noise_level' in DEVICE_AND_NOISE_MONITORING_CONFIG.")
     else:
         logger.info(
-            f"Minimum noise level: {DEVICE_AND_NOISE_MONITORING_CONFIG['minimum_noise_level']} dB."
+            "Minimum noise level: %s dB.",
+            DEVICE_AND_NOISE_MONITORING_CONFIG["minimum_noise_level"],
         )
 
 
@@ -362,7 +365,10 @@ def detect_usb_device(verbose=True):
                     )
                     if model:
                         logger.info(
-                            f"Detected specified device: {model} (Vendor {hex(dev_vendor_id)}, Product {hex(dev_product_id)})"
+                            "Detected specified device: %s (Vendor %s, Product %s)",
+                            model,
+                            hex(dev_vendor_id),
+                            hex(dev_product_id),
                         )
                     else:
                         logger.info(
@@ -383,14 +389,19 @@ def detect_usb_device(verbose=True):
             if known:
                 if verbose or not device_detected:
                     logger.info(
-                        f"{known[2]} sound meter detected (Vendor {hex(dev_vendor_id)}, Product {hex(dev_product_id)})"
+                        "%s sound meter detected (Vendor %s, Product %s)",
+                        known[2],
+                        hex(dev_vendor_id),
+                        hex(dev_product_id),
                     )
                 device_detected = True
                 return dev
             else:
                 if verbose and not device_detected:
                     logger.info(
-                        f"Ignoring device: Vendor {hex(dev_vendor_id)}, Product {hex(dev_product_id)}"
+                        "Ignoring device: Vendor %s, Product %s",
+                        hex(dev_vendor_id),
+                        hex(dev_product_id),
                     )
 
     # No device found
@@ -469,7 +480,7 @@ def update_noise_level():
                 }
             ]
 
-            logger.info(f"Current noise level: {round(current_peak_dB, 1)} dB")
+            logger.info("Current noise level: %s dB", round(current_peak_dB, 1))
 
             # Influx DB (realtime bucket)
             if INFLUXDB_CONFIG.get("enabled") and InfluxDBClient and write_api:
@@ -478,7 +489,8 @@ def update_noise_level():
                         bucket=INFLUXDB_CONFIG["realtime_bucket"], record=realtime_data
                     )
                     logger.info(
-                        f"All noise levels written to realtime bucket: {round(current_peak_dB, 1)} dB"
+                        "All noise levels written to realtime bucket: %s dB",
+                        round(current_peak_dB, 1),
                     )
                 except Exception as e:
                     logger.error(f"Failed to write to InfluxDB: {str(e)}. Queueing.")
@@ -501,7 +513,7 @@ def update_noise_level():
                 }
 
                 logger.info(
-                    f"Noise level exceeded threshold: {round(current_peak_dB, 1)} dB"
+                    "Noise level exceeded threshold: %s dB", round(current_peak_dB, 1)
                 )
 
                 # Influx DB main bucket
@@ -580,9 +592,7 @@ def retry_failed_writes():
             write_api.write(bucket=bucket, record=data)
             logger.info(f"Retried write to InfluxDB bucket '{bucket}' successfully.")
         except Exception as e:
-            logger.error(
-                f"Failed to write to InfluxDB on retry: {str(e)}. Re-queueing."
-            )
+            logger.error("Failed to write to InfluxDB on retry: %s. Re-queueing.", str(e))
             failed_writes_queue.put((bucket, data))
             break
 
@@ -597,16 +607,19 @@ def notify_on_start():
     usb_dev_check = detect_usb_device(verbose=False)
     usb_status = "USB sound meter detected" if usb_dev_check else "USB not detected"
 
-    influxdb_url = (
-        f"https://{INFLUXDB_CONFIG['host']}:{INFLUXDB_CONFIG['port']}"
-        if INFLUXDB_CONFIG.get("enabled")
-        else "N/A"
-    )
+    if INFLUXDB_CONFIG.get("enabled"):
+        influxdb_url = "https://{host}:{port}".format(
+            host=INFLUXDB_CONFIG.get("host", ""), port=INFLUXDB_CONFIG.get("port", "")
+        )
+    else:
+        influxdb_url = "N/A"
     influxdb_status = "Connected" if InfluxDBClient else "Not connected"
     video_status = "Enabled" if VIDEO_CONFIG.get("enabled") else "Disabled"
 
     if VIDEO_CONFIG.get("enabled"):
-        video_details = f" ({VIDEO_CONFIG.get('fps', 10)}fps, {VIDEO_CONFIG.get('buffer_seconds', 10)}s buffer)"
+        video_details = " (%sfps, %ss buffer)" % (
+            VIDEO_CONFIG.get("fps", 10), VIDEO_CONFIG.get("buffer_seconds", 10)
+        )
     else:
         video_details = ""
 
@@ -632,11 +645,10 @@ def notify_on_start():
 ####################################
 def cleanup_pi_camera():
     """Clean up Pi camera resources on shutdown"""
-    global global_picam2
-    if "global_picam2" in globals() and global_picam2:
+    if "global_picam2" in globals() and globals().get("global_picam2"):
         try:
-            global_picam2.stop()
-            global_picam2.close()
+            globals().get("global_picam2").stop()
+            globals().get("global_picam2").close()
             logger.info("Pi camera cleaned up successfully")
         except Exception as e:
             logger.warning(f"Error cleaning up Pi camera: {str(e)}")

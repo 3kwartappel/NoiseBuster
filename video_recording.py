@@ -121,7 +121,10 @@ def trigger_event_recording(noise_level: float, video_config: dict) -> bool:
     buffer_s = int(video_config.get("buffer_seconds", 10))
     if buffer_s < pre_s:
         logger.warning(
-            f"VIDEO_CONFIG.buffer_seconds ({buffer_s}) is shorter than pre_event_seconds ({pre_s}). Increase buffer for better pre-roll."
+            "VIDEO_CONFIG.buffer_seconds (%s) is shorter than pre_event_seconds (%s). "
+            "Increase buffer for better pre-roll.",
+            buffer_s,
+            pre_s,
         )
 
     event_ts = datetime.now()
@@ -168,7 +171,7 @@ def trigger_event_recording(noise_level: float, video_config: dict) -> bool:
             _record_lock.release()
 
     logger.info(
-        f"Event recording started (pre={pre_s}s, post={post_s}s, noise={noise_level}dB)"
+        "Event recording started (pre=%ss, post=%ss, noise=%sdB)", pre_s, post_s, noise_level
     )
     threading.Thread(target=_worker, daemon=True).start()
     return True
