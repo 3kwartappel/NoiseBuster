@@ -94,7 +94,7 @@ def _cleanup_old_segments(buffer_seconds: int):
                 pass
 
 
-def trigger_event_recording(noise_level: float, temperature, weather_description: str, precipitation, video_config: dict) -> bool:
+def trigger_event_recording(noise_level: float, video_config: dict) -> bool:
     """Concatenate .h264 segments around the event time into a single .h264 file.
 
     - Includes pre_event_seconds before and post_event_seconds after the trigger.
