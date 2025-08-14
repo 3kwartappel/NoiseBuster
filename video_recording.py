@@ -2,10 +2,10 @@
 # Video Recording Implementation for NoiseBuster (libcamera-vid segment buffer)
 
 import logging
-import threading
-import time
 import os
 import subprocess
+import threading
+import time
 from datetime import datetime
 
 logger = logging.getLogger(__name__)
@@ -34,12 +34,18 @@ def start_video_buffer(video_config: dict) -> bool:
         pattern = os.path.join(_buffer_dir, "seg_%010d.h264")
         cmd = [
             "libcamera-vid",
-            "-t", "0",
-            "-o", pattern,
-            "--segment", "1",
-            "--width", str(width),
-            "--height", str(height),
-            "--framerate", str(fps),
+            "-t",
+            "0",
+            "-o",
+            pattern,
+            "--segment",
+            "1",
+            "--width",
+            str(width),
+            "--height",
+            str(height),
+            "--framerate",
+            str(fps),
             "--inline",
             "-n",
         ]
@@ -47,7 +53,9 @@ def start_video_buffer(video_config: dict) -> bool:
         if _proc and _proc.poll() is None:
             _proc.terminate()
             _proc.wait(timeout=2)
-        _proc = subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        _proc = subprocess.Popen(
+            cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
+        )
         logger.info("libcamera-vid segment buffer started (1s segments).")
         return True
     except Exception as e:
@@ -112,7 +120,9 @@ def trigger_event_recording(noise_level: float, video_config: dict) -> bool:
     post_s = int(video_config.get("post_event_seconds", 5))
     buffer_s = int(video_config.get("buffer_seconds", 10))
     if buffer_s < pre_s:
-        logger.warning(f"VIDEO_CONFIG.buffer_seconds ({buffer_s}) is shorter than pre_event_seconds ({pre_s}). Increase buffer for better pre-roll.")
+        logger.warning(
+            f"VIDEO_CONFIG.buffer_seconds ({buffer_s}) is shorter than pre_event_seconds ({pre_s}). Increase buffer for better pre-roll."
+        )
 
     event_ts = datetime.now()
     final_name = f"video_{event_ts.strftime('%Y-%m-%d_%H-%M-%S')}_{noise_level}dB.h264"
@@ -129,7 +139,9 @@ def trigger_event_recording(noise_level: float, video_config: dict) -> bool:
             chosen.sort(key=lambda p: os.path.getmtime(p))
 
             if not chosen:
-                logger.error("No segments available for the requested event window; not saving video.")
+                logger.error(
+                    "No segments available for the requested event window; not saving video."
+                )
                 return
 
             with open(final_path, "wb") as out_f:
@@ -138,12 +150,16 @@ def trigger_event_recording(noise_level: float, video_config: dict) -> bool:
                         with open(seg, "rb") as in_f:
                             out_f.write(in_f.read())
                     except Exception as e:
-                        logger.warning(f"Failed to append segment {os.path.basename(seg)}: {e}")
+                        logger.warning(
+                            f"Failed to append segment {os.path.basename(seg)}: {e}"
+                        )
 
             if os.path.exists(final_path) and os.path.getsize(final_path) > 0:
                 logger.info(f"Saved event video: {final_path}")
             else:
-                logger.error("Final .h264 file is missing or empty after concatenation.")
+                logger.error(
+                    "Final .h264 file is missing or empty after concatenation."
+                )
         finally:
             try:
                 _cleanup_old_segments(buffer_s)
@@ -151,6 +167,8 @@ def trigger_event_recording(noise_level: float, video_config: dict) -> bool:
                 pass
             _record_lock.release()
 
-    logger.info(f"Event recording started (pre={pre_s}s, post={post_s}s, noise={noise_level}dB)")
+    logger.info(
+        f"Event recording started (pre={pre_s}s, post={post_s}s, noise={noise_level}dB)"
+    )
     threading.Thread(target=_worker, daemon=True).start()
     return True
