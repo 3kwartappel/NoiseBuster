@@ -233,6 +233,32 @@ All configuration settings are stored in the `config.json` file. Here is how to 
     Check if everything is running fine, if you configured your usb device correctly in your config.json file, you should see dB levels being reported. If you didn't, don't panic, the usb_ids file should get you covered and allow to autodetect 
     your device. 
 
+### Quick SSH test (run on your workstation)
+
+To run a short 30-second test on the Pi (activates the venv and runs NoiseBuster for 30s), run:
+
+```bash
+ssh -t pi@192.168.0.112 "cd code/NoiseBuster; source env/bin/activate; python noisebuster.py --test-duration 30"
+```
+
+This starts NoiseBuster on the remote Pi, runs it for 30 seconds (useful for testing), and then shuts it down automatically.
+
+### Remote quick test via `run_pi.sh`
+
+There's a helper script `run_pi.sh` in the project root that SSHes into the Pi, activates the virtual environment, and runs NoiseBuster.
+
+Usage from your workstation:
+
+```bash
+# Run normally (interactive on the Pi)
+./run_pi.sh
+
+# Run a 30-second test remotely (activates venv and passes --test-duration 30)
+./run_pi.sh 30
+```
+
+The script forwards the duration to the Pi and will run `python noisebuster.py --test-duration <N>` when a positive duration is provided.
+
 ## License
 
 This project is licensed under the [GNU GPLv3 License](LICENSE). This license allows for free usage and modification of the code for non-commercial purposes. For commercial use, explicit permission from the project owner is required. By choosing this option, I aim to encourage open-source collaboration while maintaining control over commercial applications of NoiseBuster.
@@ -412,11 +438,11 @@ To run NoiseBuster automatically on boot using a virtual environment:
   # activate your virtualenv first (example names used in this repo):
   source env/bin/activate   # or: source .wsl_venv/bin/activate
 
-  # Format with Black (will skip .venv, .wsl_venv, venv, env, and __pycache__)
-  black . --exclude '(^|/)(\.venv|\.wsl_venv|venv|env|__pycache__)(/|$)'
+  # Format with Black
+  black . 
 
-  # Run Flake8 (uses .flake8 in the repo; keep the exclude list to avoid linting venvs)
-  flake8 . --exclude=.venv,.wsl_venv,venv,env,__pycache__
+  # Run Flake8
+  flake8 .
   ```
 
   Editor tip: disable or remove any automatic `isort`/format-on-save tasks for this workspace to avoid accidental import reordering.

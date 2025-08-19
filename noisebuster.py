@@ -16,6 +16,7 @@ from queue import Queue
 import schedule
 import usb.core
 import usb.util
+import argparse
 
 # Only use libcamera-vid for video recording
 try:
@@ -28,6 +29,9 @@ except Exception:
 
 from video_recording import start_video_buffer, stop_video_buffer
 from video_recording import trigger_event_recording as vr_trigger
+
+# Global stop event used to gracefully stop threads (useful for test mode)
+stop_event = threading.Event()
 
 
 def load_config(config_path):
@@ -459,7 +463,7 @@ def update_noise_level():
     logger.info("Noise monitoring on USB device.")
 
     last_above_threshold = False
-    while True:
+    while not stop_event.is_set():
         current_time = time.time()
         if (current_time - window_start_time) >= DEVICE_AND_NOISE_MONITORING_CONFIG[
             "time_window_duration"
@@ -662,6 +666,15 @@ def cleanup_pi_camera():
 ####################################
 def main():
 
+    parser = argparse.ArgumentParser(description="NoiseBuster main runner")
+    parser.add_argument(
+        "--test-duration",
+        type=int,
+        default=0,
+        help="Run for N seconds then exit (0 = run indefinitely)",
+    )
+    args = parser.parse_args()
+
     # Quick config checks
     dev_check = detect_usb_device(verbose=False)
     if not dev_check:
@@ -677,8 +690,6 @@ def main():
                 "Video buffer failed to start; event videos will be unavailable."
             )
 
-    # ...existing code...
-
     # Start noise monitoring in separate thread.
     noise_thread = threading.Thread(target=update_noise_level)
     noise_thread.daemon = True
@@ -687,17 +698,33 @@ def main():
     # Schedule tasks
     schedule_tasks()
 
+    # If test duration set, we'll exit after that many seconds.
+    start_time = time.time()
     try:
-        while True:
+        while not stop_event.is_set():
             schedule.run_pending()
             time.sleep(1)
+            if (
+                args.test_duration > 0
+                and (time.time() - start_time) >= args.test_duration
+            ):
+                logger.info(
+                    "Test duration elapsed (%s seconds). Shutting down.",
+                    args.test_duration,
+                )
+                break
     except KeyboardInterrupt:
         logger.info("Manual interruption by user.")
+    finally:
+        # Signal threads to stop
+        stop_event.set()
+        # Cleanup resources
         if not VIDEO_CONFIG.get("enabled"):
-            cleanup_pi_camera()  # Clean up on exit only if not using video
+            cleanup_pi_camera()
         else:
             stop_video_buffer()
-        # No video buffer cleanup needed beyond stopping libcamera-vid
+        # Join threads (with timeout)
+        noise_thread.join(timeout=5)
 
 
 if __name__ == "__main__":
