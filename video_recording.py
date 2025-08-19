@@ -171,7 +171,10 @@ def trigger_event_recording(noise_level: float, video_config: dict) -> bool:
             _record_lock.release()
 
     logger.info(
-        "Event recording started (pre=%ss, post=%ss, noise=%sdB)", pre_s, post_s, noise_level
+        "Event recording started (pre=%ss, post=%ss, noise=%sdB)",
+        pre_s,
+        post_s,
+        noise_level,
     )
     threading.Thread(target=_worker, daemon=True).start()
     return True

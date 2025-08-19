@@ -1,0 +1,3 @@
+[tool.black]
+exclude = '\/(\.venv|\.wsl_venv|venv|env|__pycache__)(\/|$)'
+# Keep Black defaults otherwise; this repo uses Black + Flake8 only (no isort).

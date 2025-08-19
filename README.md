@@ -399,5 +399,27 @@ To run NoiseBuster automatically on boot using a virtual environment:
   sudo systemctl daemon-reload
   sudo systemctl restart noisebuster.service
   ```
+
+  ## Code formatting (Black + Flake8)
+
+  This repository uses Black and Flake8 for code formatting and linting. We do NOT use `isort` here — do not run it in this repo.
+
+  A `.flake8` file is included to configure Flake8, and `pyproject.toml` contains a Black config that excludes virtualenv folders and caches.
+
+  Recommended commands (run from the project root):
+
+  ```bash
+  # activate your virtualenv first (example names used in this repo):
+  source env/bin/activate   # or: source .wsl_venv/bin/activate
+
+  # Format with Black (will skip .venv, .wsl_venv, venv, env, and __pycache__)
+  black . --exclude '(^|/)(\.venv|\.wsl_venv|venv|env|__pycache__)(/|$)'
+
+  # Run Flake8 (uses .flake8 in the repo; keep the exclude list to avoid linting venvs)
+  flake8 . --exclude=.venv,.wsl_venv,venv,env,__pycache__
+  ```
+
+  Editor tip: disable or remove any automatic `isort`/format-on-save tasks for this workspace to avoid accidental import reordering.
+
 - to stop
   sudo systemctl stop noisebuster.service

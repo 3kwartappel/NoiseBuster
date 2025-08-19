@@ -592,7 +592,9 @@ def retry_failed_writes():
             write_api.write(bucket=bucket, record=data)
             logger.info(f"Retried write to InfluxDB bucket '{bucket}' successfully.")
         except Exception as e:
-            logger.error("Failed to write to InfluxDB on retry: %s. Re-queueing.", str(e))
+            logger.error(
+                "Failed to write to InfluxDB on retry: %s. Re-queueing.", str(e)
+            )
             failed_writes_queue.put((bucket, data))
             break
 
@@ -618,7 +620,8 @@ def notify_on_start():
 
     if VIDEO_CONFIG.get("enabled"):
         video_details = " (%sfps, %ss buffer)" % (
-            VIDEO_CONFIG.get("fps", 10), VIDEO_CONFIG.get("buffer_seconds", 10)
+            VIDEO_CONFIG.get("fps", 10),
+            VIDEO_CONFIG.get("buffer_seconds", 10),
         )
     else:
         video_details = ""
