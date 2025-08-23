@@ -15,7 +15,6 @@ import socket
 from queue import Queue
 import schedule
 import usb.core
-import usb.util
 import argparse
 
 # Only use libcamera-vid for video recording

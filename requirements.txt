@@ -7,4 +7,3 @@ pyusb==1.2.1
 schedule==1.2.1
 python-dotenv
 picamera2 
-libcamera 
