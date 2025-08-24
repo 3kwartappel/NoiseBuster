@@ -7,9 +7,9 @@
 DURATION=${1:-0}
 
 if [ "$DURATION" -gt 0 ] 2>/dev/null; then
-  REMOTE_CMD="cd code/NoiseBuster; source env/bin/activate; python noisebuster.py --test-duration $DURATION; bash"
+  REMOTE_CMD="cd code/NoiseBuster; source env/bin/activate; python -m src.noisebuster --test-duration $DURATION; bash"
 else
-  REMOTE_CMD="cd code/NoiseBuster; source env/bin/activate; python noisebuster.py; bash"
+  REMOTE_CMD="cd code/NoiseBuster; source env/bin/activate; python -m src.noisebuster; bash"
 fi
 
 ssh -t pi@192.168.0.112 "$REMOTE_CMD"

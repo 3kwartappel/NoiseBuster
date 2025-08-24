@@ -2,6 +2,8 @@
 
 This guide documents the automated developer workflow for the AI agent to run quick checks and remote tests of NoiseBuster.
 
+FYI - some file are gitignored. always make sure that is kept in mind when listing files. 
+
 ## Environment Setup
 
 Before running checks, ensure the development environment is correctly configured.

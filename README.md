@@ -175,7 +175,7 @@ All configuration settings are stored in the `config.json` file. Here is how to 
 7. **Run the application:**
 
     ```bash
-    python noisebuster.py
+    python -m src.noisebuster
     ```
 
 ### Using Docker Containerized Version
@@ -238,7 +238,7 @@ All configuration settings are stored in the `config.json` file. Here is how to 
 To run a short 30-second test on the Pi (activates the venv and runs NoiseBuster for 30s), run:
 
 ```bash
-ssh -t pi@192.168.0.112 "cd code/NoiseBuster; source env/bin/activate; python noisebuster.py --test-duration 30"
+ssh -t pi@192.168.0.112 "cd code/NoiseBuster; source env/bin/activate; python -m src.noisebuster --test-duration 30"
 ```
 
 This starts NoiseBuster on the remote Pi, runs it for 30 seconds (useful for testing), and then shuts it down automatically.
@@ -257,7 +257,23 @@ Usage from your workstation:
 ./run_pi.sh 30
 ```
 
-The script forwards the duration to the Pi and will run `python noisebuster.py --test-duration <N>` when a positive duration is provided.
+The script forwards the duration to the Pi and will run `python -m src.noisebuster --test-duration <N>` when a positive duration is provided.
+
+## Testing
+
+To run the automated tests, first install the test dependencies:
+
+```bash
+pip install pytest pytest-mock
+```
+
+Then, run the tests using pytest:
+
+```bash
+python -m pytest
+```
+
+**Note:** The integration tests in `tests/test_integration_mock.py` use mock objects to simulate hardware and do not require a Raspberry Pi or a connected sound meter. Real integration tests that use the actual hardware are not yet implemented.
 
 ## License
 
@@ -357,7 +373,7 @@ You can run NoiseBuster on Windows using the Windows Subsystem for Linux (WSL). 
 4. **Run the Application**
    - Start NoiseBuster:
      ```bash
-     python noisebuster.py
+     python -m src.noisebuster
      ```
 
 ### Troubleshooting (WSL)
@@ -379,7 +395,7 @@ To run NoiseBuster automatically on boot using a virtual environment:
      #!/bin/bash
      cd /home/pi/code/NoiseBuster
      source env/bin/activate
-     python noisebuster.py
+     python -m src.noisebuster
      ```
    - Make the script executable:
      ```bash
