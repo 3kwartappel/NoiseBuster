@@ -200,12 +200,17 @@ def trigger_event_recording(noise_level: float, video_config: dict) -> bool:
                 if video_config.get("embed_decibel_reading"):
                     embed_text_path = os.path.join(project_root, "scripts", "embed_text.py")
                     processed_path = final_path.replace(".mp4", "_processed.mp4")
+                    
+                    # Format the datetime and noise level for the overlay
+                    datetime_str = event_ts.strftime('%Y-%m-%d %H:%M:%S')
+                    text_to_embed = f"{datetime_str} - {noise_level} dB"
+
                     subprocess.run([
                         "python",
                         embed_text_path,
                         final_path,
                         processed_path,
-                        f"{noise_level} dB"
+                        text_to_embed
                     ])
                     os.remove(final_path)
                     os.rename(processed_path, final_path)

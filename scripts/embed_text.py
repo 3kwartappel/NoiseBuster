@@ -14,7 +14,7 @@ def embed_text_on_video(input_file, output_file, text):
         "-i",
         input_file,
         "-vf",
-        f"drawtext=text='{text}':x=w-tw-10:y=h-th-10:fontsize=24:fontcolor=pink",
+        f"drawtext=text='{text}':x=10:y=10:fontsize=24:fontcolor=pink",
         "-c:a",
         "copy",
         output_file,

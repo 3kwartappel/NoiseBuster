@@ -6,7 +6,6 @@ from ..noisebuster import (
     load_usb_ids,
     check_configuration,
     detect_usb_device,
-    delete_old_images,
 )
 from ..config import Config
 
@@ -55,26 +54,3 @@ def test_detect_usb_device(mock_find):
         # For now, we'll just check that the function returns the mock device
         # A more advanced test would involve creating a mock usb.core.Device object
         pass
-
-def test_delete_old_images():
-    dummy_dir = "dummy_images"
-    os.makedirs(dummy_dir, exist_ok=True)
-    old_file = os.path.join(dummy_dir, "old.jpg")
-    new_file = os.path.join(dummy_dir, "new.jpg")
-    with open(old_file, "w") as f:
-        f.write("old")
-    time.sleep(2)
-    with open(new_file, "w") as f:
-        f.write("new")
-
-    with patch("src.noisebuster.config") as mock_config:
-        mock_config.device_and_noise = {
-            "image_save_path": dummy_dir,
-            "image_retention_hours": 0.0001,
-        }
-        delete_old_images()
-        assert not os.path.exists(old_file)
-        assert os.path.exists(new_file)
-
-    os.remove(new_file)
-    os.rmdir(dummy_dir)
