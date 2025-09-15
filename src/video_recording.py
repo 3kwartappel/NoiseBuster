@@ -12,7 +12,7 @@ import shutil
 logger = logging.getLogger(__name__)
 
 # Get the absolute path to the project's root directory
-project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 
 # Globals for buffer management
 _buffer_dir = os.path.join(project_root, "videos", "buffer")
@@ -38,7 +38,9 @@ def start_video_buffer(video_config: dict) -> bool:
             return False
 
         if not is_tool("rpicam-vid"):
-            logger.error("rpicam-vid command not found. Please ensure it is installed and in your PATH.")
+            logger.error(
+                "rpicam-vid command not found. Please ensure it is installed and in your PATH."
+            )
             return False
 
         os.makedirs(_buffer_dir, exist_ok=True)
@@ -100,7 +102,9 @@ def _list_segments():
         return []
     items = []
     for name in os.listdir(_buffer_dir):
-        if name.startswith("seg_") and (name.endswith(".h264") or name.endswith(".mp4")):
+        if name.startswith("seg_") and (
+            name.endswith(".h264") or name.endswith(".mp4")
+        ):
             p = os.path.join(_buffer_dir, name)
             try:
                 items.append((p, os.path.getmtime(p)))
@@ -131,7 +135,9 @@ def trigger_event_recording(noise_level: float, video_config: dict) -> bool:
         return False
 
     if not is_tool("ffmpeg"):
-        logger.error("ffmpeg command not found. Please ensure it is installed and in your PATH.")
+        logger.error(
+            "ffmpeg command not found. Please ensure it is installed and in your PATH."
+        )
         return False
 
     # Atomic non-blocking acquire to avoid race between concurrent triggers
@@ -159,10 +165,10 @@ def trigger_event_recording(noise_level: float, video_config: dict) -> bool:
             # Wait for the post-event window to ensure all segments are written
             time.sleep(post_s)
             start_t = event_ts.timestamp() - pre_s - 2  # 2s grace period
-            end_t = event_ts.timestamp() + post_s + 2 # 2s grace period
-            
+            end_t = event_ts.timestamp() + post_s + 2  # 2s grace period
+
             segs = _list_segments()
-            
+
             chosen = [p for p, mt in segs if start_t <= mt <= end_t]
             chosen.sort(key=lambda p: os.path.getmtime(p))
 
@@ -198,28 +204,32 @@ def trigger_event_recording(noise_level: float, video_config: dict) -> bool:
             if os.path.exists(final_path) and os.path.getsize(final_path) > 0:
                 logger.info(f"Saved event video: {final_path}")
                 if video_config.get("embed_decibel_reading"):
-                    embed_text_path = os.path.join(project_root, "scripts", "embed_text.py")
+                    embed_text_path = os.path.join(
+                        project_root, "scripts", "embed_text.py"
+                    )
                     processed_path = final_path.replace(".mp4", "_processed.mp4")
-                    
+
                     # Format the datetime and noise level for the overlay
-                    datetime_str = event_ts.strftime('%Y-%m-%d %H:%M:%S')
+                    datetime_str = event_ts.strftime("%Y-%m-%d %H:%M:%S")
                     text_to_embed = f"{datetime_str} - {noise_level} dB"
 
-                    subprocess.run([
-                        "python",
-                        embed_text_path,
-                        final_path,
-                        processed_path,
-                        text_to_embed
-                    ])
+                    subprocess.run(
+                        [
+                            "python",
+                            embed_text_path,
+                            final_path,
+                            processed_path,
+                            text_to_embed,
+                        ]
+                    )
                     os.remove(final_path)
                     os.rename(processed_path, final_path)
             else:
-                logger.error(
-                    "Final .mp4 file is missing or empty after concatenation."
-                )
+                logger.error("Final .mp4 file is missing or empty after concatenation.")
         except FileNotFoundError:
-            logger.error("ffmpeg command not found. Please ensure it is installed and in your PATH.")
+            logger.error(
+                "ffmpeg command not found. Please ensure it is installed and in your PATH."
+            )
         except subprocess.CalledProcessError as e:
             logger.error(f"ffmpeg command failed: {e.stderr}")
         finally:

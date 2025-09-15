@@ -1,14 +1,12 @@
 #!/usr/bin/env python3
 # NoiseBuster - created by Raphaël Vael (Main Dev)
 # License: CC BY-NC 4.0
-import json
 import logging
 import os
-import subprocess
 import sys
 import threading
 import time
-from datetime import datetime, timedelta
+from datetime import datetime
 from logging.handlers import RotatingFileHandler
 import traceback
 import socket
@@ -16,6 +14,7 @@ from queue import Queue
 import schedule
 import usb.core
 import argparse
+from .config import config
 
 # Only use libcamera-vid for video recording
 
@@ -27,8 +26,6 @@ from .video_recording import trigger_event_recording as vr_trigger
 stop_event = threading.Event()
 
 
-from .config import config
-
 # usb modules imported above
 
 
@@ -36,9 +33,7 @@ def trigger_video_recording(noise_level, video_config):
     """Proxy to video_recording module trigger."""
     if not video_config.get("enabled"):
         return False
-    return vr_trigger(
-        noise_level=noise_level, video_config=video_config
-    )
+    return vr_trigger(noise_level=noise_level, video_config=video_config)
 
 
 # We'll keep optional modules as None if not installed or not enabled
@@ -66,13 +61,13 @@ usb_product_id_int = int(usb_product_id_str, 16) if usb_product_id_str else None
 ####################################
 class ColoredFormatter(logging.Formatter):
     COLORS = {
-        "DEBUG": "\033[37m",  # White
-        "INFO": "\033[32m",  # Green
-        "WARNING": "\033[33m",  # Yellow
-        "ERROR": "\033[31m",  # Red
-        "CRITICAL": "\033[41m",  # Red background
+        "DEBUG": " [37m",  # White
+        "INFO": " [32m",  # Green
+        "WARNING": " [33m",  # Yellow
+        "ERROR": " [31m",  # Red
+        "CRITICAL": " [41m",  # Red background
     }
-    RESET = "\033[0m"
+    RESET = " [0m"
 
     def format(self, record):
         # Do not mutate record.msg (other handlers may rely on it).
@@ -92,7 +87,7 @@ ch.setFormatter(console_formatter)
 logger.addHandler(ch)
 
 # Get the absolute path to the project's root directory
-project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 
 # File handler: only add if LOCAL_LOGGING is enabled in config
 if config.local_logging:
@@ -396,8 +391,7 @@ def update_noise_level():
 
             # If above threshold
             above_threshold = (
-                current_peak_dB
-                >= config.device_and_noise["minimum_noise_level"]
+                current_peak_dB >= config.device_and_noise["minimum_noise_level"]
             )
             # Only trigger on rising edge
             if above_threshold and not last_above_threshold:
@@ -433,7 +427,8 @@ def update_noise_level():
                 if config.video.get("enabled"):
                     try:
                         started = trigger_video_recording(
-                            noise_level=round(current_peak_dB, 1), video_config=config.video
+                            noise_level=round(current_peak_dB, 1),
+                            video_config=config.video,
                         )
                         if started:
                             logger.info(

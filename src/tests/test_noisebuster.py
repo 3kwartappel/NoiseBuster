@@ -1,13 +1,10 @@
-import os
-import json
-import time
 from unittest.mock import patch, mock_open
 from ..noisebuster import (
     load_usb_ids,
     check_configuration,
     detect_usb_device,
 )
-from ..config import Config
+
 
 def test_load_usb_ids():
     dummy_usb_ids = "0x1234,0x5678 # Model 1\n0x4321,0x8765 # Model 2"
@@ -17,6 +14,7 @@ def test_load_usb_ids():
             (0x1234, 0x5678, "Model 1"),
             (0x4321, 0x8765, "Model 2"),
         ]
+
 
 @patch("src.noisebuster.logger")
 def test_check_configuration(mock_logger):
@@ -33,11 +31,10 @@ def test_check_configuration(mock_logger):
         mock_config.camera = {"use_ip_camera": False, "use_pi_camera": False}
         mock_config.video = {"enabled": False}
         mock_config.device_and_noise = {"minimum_noise_level": 50}
-        
+
         check_configuration()
-        mock_logger.info.assert_any_call(
-            "InfluxDB is enabled and properly configured."
-        )
+        mock_logger.info.assert_any_call("InfluxDB is enabled and properly configured.")
+
 
 @patch("usb.core.find")
 def test_detect_usb_device(mock_find):
@@ -48,7 +45,7 @@ def test_detect_usb_device(mock_find):
     # Simulate device found
     mock_device = "mock_device"
     mock_find.return_value = [mock_device]
-    with patch("src.noisebuster.usb_ids", [(0x16c0, 0x5dc, "Test Model")]):
+    with patch("src.noisebuster.usb_ids", [(0x16C0, 0x5DC, "Test Model")]):
         # This is a bit tricky because the device object is not a simple dict
         # We can't easily mock the idVendor and idProduct attributes
         # For now, we'll just check that the function returns the mock device

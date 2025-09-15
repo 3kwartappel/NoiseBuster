@@ -1,4 +1,3 @@
-
 import os
 import time
 from unittest.mock import patch, mock_open
@@ -7,6 +6,7 @@ from ..video_recording import (
     _cleanup_old_segments,
     trigger_event_recording,
 )
+
 
 def test_list_segments():
     dummy_dir = "dummy_buffer"
@@ -21,15 +21,20 @@ def test_list_segments():
                     assert segments[0][0] == os.path.join(dummy_dir, "seg_1.h264")
                     assert segments[1][0] == os.path.join(dummy_dir, "seg_2.h264")
 
+
 def test_cleanup_old_segments():
     dummy_dir = "dummy_buffer"
     old_file = os.path.join(dummy_dir, "old.h264")
     new_file = os.path.join(dummy_dir, "new.h264")
     with patch("src.video_recording._buffer_dir", dummy_dir):
-        with patch("src.video_recording._list_segments", return_value=[(old_file, time.time() - 10), (new_file, time.time())]):
+        with patch(
+            "src.video_recording._list_segments",
+            return_value=[(old_file, time.time() - 10), (new_file, time.time())],
+        ):
             with patch("os.remove") as mock_remove:
                 _cleanup_old_segments(1)
                 mock_remove.assert_called_once_with(old_file)
+
 
 @patch("src.video_recording._list_segments")
 @patch("src.video_recording.threading.Thread")
@@ -45,7 +50,7 @@ def test_trigger_event_recording(mock_thread, mock_list_segments):
         (os.path.join(dummy_dir, f"seg_{i}.h264"), time.time() - 10 + i)
         for i in range(20)
     ]
-    
+
     with patch("builtins.open", mock_open()):
         assert trigger_event_recording(55.0, video_config)
         mock_thread.assert_called_once()

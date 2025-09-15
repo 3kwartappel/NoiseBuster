@@ -1,8 +1,6 @@
-import os
-import time
 from unittest.mock import patch, MagicMock
 from ..noisebuster import main as noisebuster_main
-from ..video_recording import _video_dir
+
 
 @patch("src.noisebuster.detect_usb_device")
 @patch("src.video_recording.start_video_buffer")
@@ -22,14 +20,14 @@ def test_integration_mock_noise_event(
 
     # Simulate a noise event by patching the ctrl_transfer method
     def mock_ctrl_transfer(*args, **kwargs):
-            # Return a high noise level to trigger an event
-            return [44, 1]
+        # Return a high noise level to trigger an event
+        return [44, 1]
 
     mock_usb_device.ctrl_transfer.side_effect = mock_ctrl_transfer
 
     # Run the main function in a separate thread
     import threading
-    
+
     # Use a test-specific config
     with patch("src.noisebuster.config") as mock_config:
         mock_config.influxdb = {"enabled": False}
@@ -51,7 +49,7 @@ def test_integration_mock_noise_event(
 
         # Use monkeypatch to control the test duration
         monkeypatch.setattr("sys.argv", ["noisebuster.py", "--test-duration", "5"])
-        
+
         main_thread = threading.Thread(target=noisebuster_main)
         main_thread.start()
         main_thread.join()
