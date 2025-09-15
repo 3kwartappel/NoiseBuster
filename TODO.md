@@ -6,13 +6,8 @@ Update documentation if its working correctly.
 
 ## Task List
 
-- 1. [ ] Integrate Gemini CLI with GitHub Actions/Runners to automate code standard checks and potentially solve GitHub issues. See [run-gemini-cli](https://github.com/google-github-actions/run-gemini-cli) for details.
-  - **Workflow:** Create a new GitHub Actions workflow.
-  - **Triggers:** The workflow will be triggered by pull requests and commits to the `main` branch.
-  - **Commands:** Add recommended Gemini CLI commands to the workflow.
-- 2. [ ] Add tests to the CI/CD pipeline that run when code is committed to `main` or a pull request is created.
-  - **Workflow:** Create a new workflow.
-  - **Command:** The workflow will run `pytest`.
-  - **Scope:** The pipeline will run both unit and mock integration tests.
+- 1. [ ] fix unit tests
+  2. [ ] fix security flaws raised by github on github (ensure tests still succeed)
+  3. [ ] currently we need an actual camera and decibel meter to know if things are really working. how can this be tested in github actions without those? should we have a preset video that it can run logic on in realtime?
 
 *Note: This list can be used as a basis for creating GitHub Issues.*
