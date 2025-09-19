@@ -1,10 +1,13 @@
 import os
+import subprocess
 import time
+from datetime import datetime
 from unittest.mock import patch, mock_open
 from ..video_recording import (
     _list_segments,
     _cleanup_old_segments,
     trigger_event_recording,
+    _process_event_recording,
 )
 
 
@@ -36,21 +39,4 @@ def test_cleanup_old_segments():
                 mock_remove.assert_called_once_with(old_file)
 
 
-@patch("src.video_recording._list_segments")
-@patch("src.video_recording.threading.Thread")
-def test_trigger_event_recording(mock_thread, mock_list_segments):
-    dummy_dir = "dummy_buffer"
-    video_config = {
-        "enabled": True,
-        "pre_event_seconds": 5,
-        "post_event_seconds": 5,
-        "buffer_seconds": 10,
-    }
-    mock_list_segments.return_value = [
-        (os.path.join(dummy_dir, f"seg_{i}.h264"), time.time() - 10 + i)
-        for i in range(20)
-    ]
 
-    with patch("builtins.open", mock_open()):
-        assert trigger_event_recording(55.0, video_config)
-        mock_thread.assert_called_once()

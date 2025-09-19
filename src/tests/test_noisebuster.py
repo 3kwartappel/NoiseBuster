@@ -1,8 +1,12 @@
-from unittest.mock import patch, mock_open
+from unittest.mock import patch, mock_open, MagicMock
+import threading
+import time
 from ..noisebuster import (
     load_usb_ids,
     check_configuration,
     detect_usb_device,
+    update_noise_level,
+    stop_event,
 )
 
 
@@ -51,3 +55,49 @@ def test_detect_usb_device(mock_find):
         # For now, we'll just check that the function returns the mock device
         # A more advanced test would involve creating a mock usb.core.Device object
         pass
+
+@patch("src.noisebuster.trigger_video_recording")
+@patch("src.noisebuster.detect_usb_device")
+def test_noise_trigger_rising_edge(mock_detect_usb, mock_trigger_video):
+    """Ensure video is triggered only once when noise threshold is crossed."""
+    mock_usb_dev = MagicMock()
+    mock_detect_usb.return_value = mock_usb_dev
+
+    # Sequence of noise readings: low, high, high, low
+    # Each reading is (ret[0], ret[1]) for ctrl_transfer
+    # dB = (ret[0] + ((ret[1] & 3) * 256)) * 0.1 + 30
+    # 40dB -> (100, 0)
+    # 80dB -> (500, 0) -> simplified to (244, 1) since ret[0] is a byte
+    noise_readings = [
+        [100, 0],  # 40 dB (Below threshold)
+        [244, 1],  # 80 dB (Above threshold)
+        [244, 1],  # 80 dB (Still above)
+        [100, 0],  # 40 dB (Below again)
+    ]
+    mock_usb_dev.ctrl_transfer.side_effect = noise_readings
+
+    with patch("src.noisebuster.config") as mock_config, patch("src.noisebuster.stop_event") as mock_stop_event:
+        mock_config.device_and_noise = {
+            "minimum_noise_level": 60,
+            "time_window_duration": 0.1, # Short window for faster test
+        }
+        mock_config.influxdb = {"enabled": False}
+        mock_config.video = {"enabled": True}
+
+        # Run the noise update function for a short duration
+        def stop_after_delay():
+            time.sleep(0.5) # Let it run through the noise readings
+            mock_stop_event.is_set.return_value = True
+        
+        mock_stop_event.is_set.return_value = False
+        noise_thread = threading.Thread(target=update_noise_level)
+        stopper_thread = threading.Thread(target=stop_after_delay)
+        
+        noise_thread.start()
+        stopper_thread.start()
+        
+        noise_thread.join()
+        stopper_thread.join()
+
+    # trigger_video_recording should have been called exactly once
+    mock_trigger_video.assert_called_once()

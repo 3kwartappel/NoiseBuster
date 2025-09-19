@@ -161,83 +161,7 @@ def trigger_event_recording(noise_level: float, video_config: dict) -> bool:
     final_path = os.path.join(_video_dir, final_name)
 
     def _worker():
-        try:
-            # Wait for the post-event window to ensure all segments are written
-            time.sleep(post_s)
-            start_t = event_ts.timestamp() - pre_s - 2  # 2s grace period
-            end_t = event_ts.timestamp() + post_s + 2  # 2s grace period
-
-            segs = _list_segments()
-
-            chosen = [p for p, mt in segs if start_t <= mt <= end_t]
-            chosen.sort(key=lambda p: os.path.getmtime(p))
-
-            if not chosen:
-                logger.error(
-                    "No segments available for the requested event window; not saving video."
-                )
-                return
-
-            # Create a temporary file with the list of segments to concatenate
-            list_file_path = os.path.join(_buffer_dir, "concat_list.txt")
-            with open(list_file_path, "w") as f:
-                for seg in chosen:
-                    f.write(f"file '{seg}'\n")
-
-            # Use ffmpeg to concatenate the segments
-            ffmpeg_cmd = [
-                "ffmpeg",
-                "-y",
-                "-f",
-                "concat",
-                "-safe",
-                "0",
-                "-i",
-                list_file_path,
-                "-c",
-                "copy",
-                final_path,
-            ]
-            subprocess.run(ffmpeg_cmd, check=True, capture_output=True, text=True)
-            os.remove(list_file_path)
-
-            if os.path.exists(final_path) and os.path.getsize(final_path) > 0:
-                logger.info(f"Saved event video: {final_path}")
-                if video_config.get("embed_decibel_reading"):
-                    embed_text_path = os.path.join(
-                        project_root, "scripts", "embed_text.py"
-                    )
-                    processed_path = final_path.replace(".mp4", "_processed.mp4")
-
-                    # Format the datetime and noise level for the overlay
-                    datetime_str = event_ts.strftime("%Y-%m-%d %H:%M:%S")
-                    text_to_embed = f"{datetime_str} - {noise_level} dB"
-
-                    subprocess.run(
-                        [
-                            "python",
-                            embed_text_path,
-                            final_path,
-                            processed_path,
-                            text_to_embed,
-                        ]
-                    )
-                    os.remove(final_path)
-                    os.rename(processed_path, final_path)
-            else:
-                logger.error("Final .mp4 file is missing or empty after concatenation.")
-        except FileNotFoundError:
-            logger.error(
-                "ffmpeg command not found. Please ensure it is installed and in your PATH."
-            )
-        except subprocess.CalledProcessError as e:
-            logger.error(f"ffmpeg command failed: {e.stderr}")
-        finally:
-            _record_lock.release()
-            try:
-                _cleanup_old_segments(buffer_s)
-            except Exception:
-                pass
+        _process_event_recording(noise_level, video_config, event_ts, final_path)
 
     logger.info(
         "Event recording started (pre=%ss, post=%ss, noise=%sdB)",
@@ -247,3 +171,89 @@ def trigger_event_recording(noise_level: float, video_config: dict) -> bool:
     )
     threading.Thread(target=_worker, daemon=True).start()
     return True
+
+
+def _process_event_recording(
+    noise_level: float, video_config: dict, event_ts: datetime, final_path: str
+):
+    """The actual logic for processing and saving a video event."""
+    pre_s = int(video_config.get("pre_event_seconds", 5))
+    post_s = int(video_config.get("post_event_seconds", 5))
+    buffer_s = int(video_config.get("buffer_seconds", 10))
+    try:
+        # Wait for the post-event window to ensure all segments are written
+        time.sleep(post_s)
+        start_t = event_ts.timestamp() - pre_s - 2  # 2s grace period
+        end_t = event_ts.timestamp() + post_s + 2  # 2s grace period
+
+        segs = _list_segments()
+
+        chosen = [p for p, mt in segs if start_t <= mt <= end_t]
+        chosen.sort(key=lambda p: os.path.getmtime(p))
+
+        if not chosen:
+            logger.error(
+                "No segments available for the requested event window; not saving video."
+            )
+            return
+
+        # Create a temporary file with the list of segments to concatenate
+        list_file_path = os.path.join(_buffer_dir, "concat_list.txt")
+        with open(list_file_path, "w") as f:
+            for seg in chosen:
+                f.write(f"file '{seg}'\n")
+
+        # Use ffmpeg to concatenate the segments
+        ffmpeg_cmd = [
+            "ffmpeg",
+            "-y",
+            "-f",
+            "concat",
+            "-safe",
+            "0",
+            "-i",
+            list_file_path,
+            "-c",
+            "copy",
+            final_path,
+        ]
+        subprocess.run(ffmpeg_cmd, check=True, capture_output=True, text=True)
+        os.remove(list_file_path)
+
+        if os.path.exists(final_path) and os.path.getsize(final_path) > 0:
+            logger.info(f"Saved event video: {final_path}")
+            if video_config.get("embed_decibel_reading"):
+                embed_text_path = os.path.join(
+                    project_root, "scripts", "embed_text.py"
+                )
+                processed_path = final_path.replace(".mp4", "_processed.mp4")
+
+                # Format the datetime and noise level for the overlay
+                datetime_str = event_ts.strftime("%Y-%m-%d %H:%M:%S")
+                text_to_embed = f"{datetime_str} - {noise_level} dB"
+
+                subprocess.run(
+                    [
+                        "python",
+                        embed_text_path,
+                        final_path,
+                        processed_path,
+                        text_to_embed,
+                    ]
+                )
+                os.remove(final_path)
+                os.rename(processed_path, final_path)
+        else:
+            logger.error("Final .mp4 file is missing or empty after concatenation.")
+    except FileNotFoundError:
+        logger.error(
+            "ffmpeg command not found. Please ensure it is installed and in your PATH."
+        )
+    except subprocess.CalledProcessError as e:
+        logger.error(f"ffmpeg command failed: {e.stderr}")
+    finally:
+        _record_lock.release()
+        try:
+            _cleanup_old_segments(buffer_s)
+        except Exception:
+            pass
