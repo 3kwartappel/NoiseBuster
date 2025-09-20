@@ -1,4 +1,4 @@
-# NoiseBuster: AI-Enhanced Noise Monitoring
+# NoiseBuster: oise Monitoring
 
 NoiseBuster is a Python application for real-time noise monitoring using a USB sound meter. It integrates with InfluxDB for data storage, Grafana for visualization, and supports various optional features like video recording, weather data correlation, and notifications. This document provides a comprehensive guide for setting up, configuring, and running NoiseBuster.
 
@@ -57,7 +57,7 @@ NoiseBuster is designed for continuous noise level monitoring. When noise exceed
     ```
     *(For non-Raspberry Pi systems, you may need to use `requirements_no_pi.txt`)*
 
-4.  **Set USB Device Permissions:**
+4.  **Set USB Device Permissions (once off) - already done:**
     Create a `udev` rule to ensure the application can access the USB sound meter.
     First, find your device's vendor and product ID:
     ```bash
@@ -77,7 +77,7 @@ NoiseBuster is designed for continuous noise level monitoring. When noise exceed
     sudo udevadm trigger
     ```
 
-### 3.2. Windows (via WSL)
+<!-- ### 3.2. Windows (via WSL)
 
 1.  **Install prerequisites in your WSL terminal:**
     ```bash
@@ -91,9 +91,9 @@ NoiseBuster is designed for continuous noise level monitoring. When noise exceed
     python3 -m venv .wsl_venv
     source .wsl_venv/bin/activate
     pip install -r requirements_no_pi.txt
-    ```
+    ``` -->
 
-### 3.3. Docker
+<!-- ### 3.3. Docker
 
 1.  **Clone the repository:**
     ```bash
@@ -110,7 +110,7 @@ NoiseBuster is designed for continuous noise level monitoring. When noise exceed
     You'll need to pass the USB device to the container.
     ```bash
     docker run -d --name noisebuster --device=/dev/bus/usb:/dev/bus/usb noisebuster
-    ```
+    ``` -->
 
 ## 4. Configuration
 
@@ -138,7 +138,7 @@ You can also run it for a specific duration for testing:
 python -m src.noisebuster --test-duration 30
 ```
 
-### 5.2. Running as a Service (Linux)
+<!-- ### 5.2. Running as a Service (Linux)
 
 To run NoiseBuster automatically on boot, you can set up a `systemd` service.
 
@@ -172,11 +172,13 @@ To run NoiseBuster automatically on boot, you can set up a `systemd` service.
     sudo systemctl daemon-reload
     sudo systemctl enable noisebuster.service
     sudo systemctl start noisebuster.service
-    ```
+    ``` -->
 
 ## 6. Development and Testing
 
 ### 6.1. AI Development Guidelines
+
+The following always needs to be adhered before pushing code.
 
 *   **Create Tests:** New features should be accompanied by tests.
 *   **Secret-Scanning:** Ensure no sensitive information is committed.
@@ -187,10 +189,10 @@ To run NoiseBuster automatically on boot, you can set up a `systemd` service.
 This project uses `black` for code formatting and `flake8` for linting.
 
 ```bash
-# Format with Black
+# Format with Black. run this locally before pushing.
 black .
 
-# Run Flake8
+# Run Flake8. run this locally before pushing.
 flake8 .
 ```
 

@@ -162,9 +162,7 @@ def trigger_event_recording(noise_level: float, video_config: dict) -> bool:
 
     def _worker():
         segs = _list_segments()
-        _process_event_recording(
-            noise_level, video_config, event_ts, final_path, segs
-        )
+        _process_event_recording(noise_level, video_config, event_ts, final_path, segs)
 
     logger.info(
         "Event recording started (pre=%ss, post=%ss, noise=%sdB)",
@@ -228,9 +226,7 @@ def _process_event_recording(
         if os.path.exists(final_path) and os.path.getsize(final_path) > 0:
             logger.info(f"Saved event video: {final_path}")
             if video_config.get("embed_decibel_reading"):
-                embed_text_path = os.path.join(
-                    project_root, "scripts", "embed_text.py"
-                )
+                embed_text_path = os.path.join(project_root, "scripts", "embed_text.py")
                 processed_path = final_path.replace(".mp4", "_processed.mp4")
 
                 # Format the datetime and noise level for the overlay
