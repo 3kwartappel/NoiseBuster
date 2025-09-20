@@ -161,7 +161,10 @@ def trigger_event_recording(noise_level: float, video_config: dict) -> bool:
     final_path = os.path.join(_video_dir, final_name)
 
     def _worker():
-        _process_event_recording(noise_level, video_config, event_ts, final_path)
+        segs = _list_segments()
+        _process_event_recording(
+            noise_level, video_config, event_ts, final_path, segs
+        )
 
     logger.info(
         "Event recording started (pre=%ss, post=%ss, noise=%sdB)",
@@ -174,7 +177,11 @@ def trigger_event_recording(noise_level: float, video_config: dict) -> bool:
 
 
 def _process_event_recording(
-    noise_level: float, video_config: dict, event_ts: datetime, final_path: str
+    noise_level: float,
+    video_config: dict,
+    event_ts: datetime,
+    final_path: str,
+    segments: list,
 ):
     """The actual logic for processing and saving a video event."""
     pre_s = int(video_config.get("pre_event_seconds", 5))
@@ -186,9 +193,7 @@ def _process_event_recording(
         start_t = event_ts.timestamp() - pre_s - 2  # 2s grace period
         end_t = event_ts.timestamp() + post_s + 2  # 2s grace period
 
-        segs = _list_segments()
-
-        chosen = [p for p, mt in segs if start_t <= mt <= end_t]
+        chosen = [p for p, mt in segments if start_t <= mt <= end_t]
         chosen.sort(key=lambda p: os.path.getmtime(p))
 
         if not chosen:
