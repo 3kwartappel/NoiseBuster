@@ -40,7 +40,7 @@ def test_cleanup_old_segments():
                 mock_remove.assert_called_once_with(old_file)
 
 
-@pytest.mark.skip(reason="Temporarily disabled due to persistent mock failures")
+
 @patch("src.video_recording._record_lock")
 @patch("src.video_recording.logger")
 def test_process_event_recording_no_segments(mock_logger, mock_lock):
@@ -57,7 +57,7 @@ def test_process_event_recording_no_segments(mock_logger, mock_lock):
     )
 
 
-@pytest.mark.skip(reason="Temporarily disabled due to persistent mock failures")
+
 @patch("src.video_recording._record_lock")
 @patch("src.video_recording.logger")
 @patch("builtins.open", new_callable=mock_open)
@@ -76,6 +76,7 @@ def test_process_event_recording_ffmpeg_not_found(
     mock_logger.error.assert_called_with(
         "ffmpeg command not found. Please ensure it is installed and in your PATH."
     )
+
 
 
 @pytest.mark.skip(reason="Temporarily disabled due to persistent mock failures")
